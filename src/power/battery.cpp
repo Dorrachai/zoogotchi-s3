@@ -4,8 +4,8 @@
 
 void battery_init() {
     pinMode(PIN_BAT_ADC, INPUT);
-    analogSetAttenuation(ADC_11db);  // 0–3.3V range
-    analogReadResolution(12);        // 12-bit: 0–4095
+    analogSetAttenuation(ADC_11db);
+    analogReadResolution(12);
 }
 
 float battery_read_voltage() {
@@ -13,7 +13,7 @@ float battery_read_voltage() {
     for (int i = 0; i < BAT_ADC_SAMPLES; i++) {
         sum += analogRead(PIN_BAT_ADC);
     }
-    float adc_avg = (float)sum / BAT_ADC_SAMPLES;
+    float adc_avg = (float)sum / (float)BAT_ADC_SAMPLES;
     float adc_v   = adc_avg / 4095.0f * 3.3f;
     return adc_v * BAT_DIVIDER_RATIO;
 }
@@ -26,4 +26,10 @@ uint8_t battery_v_to_percent(float v) {
 
 uint8_t battery_get_percent() {
     return battery_v_to_percent(battery_read_voltage());
+}
+
+bool battery_is_low_brownout(float v) {
+    // Below ~2.0V means running USB-only with no LiPo attached (open/pulled low ADC)
+    if (v < 2.2f) return false;
+    return v <= BAT_BROWNOUT_V;
 }

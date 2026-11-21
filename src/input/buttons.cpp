@@ -2,78 +2,84 @@
 #include "../config.h"
 #include <Arduino.h>
 
-// Ring buffer capacity (power of 2 for cheap modulo)
-static const uint8_t QUEUE_CAP = 8;
+static constexpr uint8_t QUEUE_CAP = 8;
 static ButtonEvent _queue[QUEUE_CAP];
 static uint8_t _head = 0, _tail = 0;
 
-struct BtnState {
+struct OnboardBtn {
     uint8_t  pin;
     bool     lastRaw;
     bool     debounced;
     uint32_t lastChangeMs;
     uint32_t pressedAtMs;
     bool     longFired;
+    bool     pendingShort;
+    uint32_t lastReleaseMs;
 };
 
-static BtnState _btns[3] = {
-    {PIN_BTN_A, true, true, 0, 0, false},
-    {PIN_BTN_B, true, true, 0, 0, false},
-    {PIN_BTN_C, true, true, 0, 0, false},
-};
+static OnboardBtn _pwr  = {PIN_SYS_OUT,  false, false, 0, 0, false, false, 0};
+static OnboardBtn _boot = {PIN_BOOT_BTN, false, false, 0, 0, false, false, 0};
 
 static void enqueue(ButtonEvent e) {
     uint8_t next = (_tail + 1) & (QUEUE_CAP - 1);
-    if (next != _head) {  // drop if full
+    if (next != _head) {
         _queue[_tail] = e;
         _tail = next;
     }
 }
 
 void buttons_init() {
-    pinMode(PIN_BTN_A, INPUT_PULLUP);
-    pinMode(PIN_BTN_B, INPUT_PULLUP);
-    pinMode(PIN_BTN_C, INPUT_PULLUP);
+    // CRITICAL: PIN_SYS_OUT (GPIO40) is an input sense line — NEVER drive OUTPUT!
+    pinMode(PIN_SYS_OUT, INPUT);
+    pinMode(PIN_BOOT_BTN, INPUT_PULLUP);
+}
+
+static void poll_btn(OnboardBtn& b, bool is_pwr, uint32_t now) {
+    bool raw = (digitalRead(b.pin) == LOW);
+    if (raw != b.lastRaw) {
+        b.lastRaw = raw;
+        b.lastChangeMs = now;
+    }
+    if ((now - b.lastChangeMs) < BTN_DEBOUNCE_MS) return;
+
+    bool prev = b.debounced;
+    b.debounced = raw;
+
+    if (!prev && raw) {
+        b.pressedAtMs = now;
+        b.longFired   = false;
+    }
+
+    if (prev && !raw && !b.longFired) {
+        if (is_pwr) {
+            if (b.pendingShort && (now - b.lastReleaseMs) <= BTN_DOUBLE_MS) {
+                b.pendingShort = false;
+                enqueue(ButtonEvent::PWR_DOUBLE);
+            } else {
+                b.pendingShort  = true;
+                b.lastReleaseMs = now;
+            }
+        } else {
+            enqueue(ButtonEvent::BOOT_SHORT);
+        }
+    }
+
+    if (raw && !b.longFired && (now - b.pressedAtMs) >= BTN_LONG_PRESS_MS) {
+        b.longFired    = true;
+        b.pendingShort = false;
+        enqueue(is_pwr ? ButtonEvent::PWR_LONG : ButtonEvent::BOOT_LONG);
+    }
+
+    if (is_pwr && b.pendingShort && (now - b.lastReleaseMs) > BTN_DOUBLE_MS) {
+        b.pendingShort = false;
+        enqueue(ButtonEvent::PWR_SHORT);
+    }
 }
 
 void buttons_update() {
     uint32_t now = millis();
-
-    for (int i = 0; i < 3; i++) {
-        bool raw = (digitalRead(_btns[i].pin) == LOW);  // active-low with pull-up
-
-        // Detect raw edge
-        if (raw != _btns[i].lastRaw) {
-            _btns[i].lastRaw = raw;
-            _btns[i].lastChangeMs = now;
-        }
-
-        // Apply debounce window
-        if ((now - _btns[i].lastChangeMs) < BTN_DEBOUNCE_MS) continue;
-
-        bool prev = _btns[i].debounced;
-        _btns[i].debounced = raw;
-
-        if (!prev && raw) {
-            // Pressed
-            _btns[i].pressedAtMs = now;
-            _btns[i].longFired   = false;
-        }
-
-        if (prev && !raw && !_btns[i].longFired) {
-            // Released without long-press firing → short press
-            // ButtonEvent: A_PRESS=1, B_PRESS=2, C_PRESS=3
-            enqueue(static_cast<ButtonEvent>(i + 1));
-        }
-
-        if (raw && !_btns[i].longFired &&
-            (now - _btns[i].pressedAtMs) >= BTN_LONG_PRESS_MS) {
-            // Long press threshold crossed
-            _btns[i].longFired = true;
-            // A_LONG=4, B_LONG=5, C_LONG=6
-            enqueue(static_cast<ButtonEvent>(i + 4));
-        }
-    }
+    poll_btn(_pwr,  true,  now);
+    poll_btn(_boot, false, now);
 }
 
 ButtonEvent buttons_get_event() {

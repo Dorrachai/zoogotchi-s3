@@ -6,6 +6,11 @@ on:
     paths:
       - "src/**"
       - "include/**"
+      - "web_ui/**"
+      - "tools/**"
+      - "test/**"
+      - "data/**"
+      - "llm_training/**"
       - "platformio.ini"
       - "partitions_16M.csv"
       - ".github/workflows/build-firmware.yml"
@@ -13,6 +18,11 @@ on:
     paths:
       - "src/**"
       - "include/**"
+      - "web_ui/**"
+      - "tools/**"
+      - "test/**"
+      - "data/**"
+      - "llm_training/**"
       - "platformio.ini"
       - "partitions_16M.csv"
 
@@ -35,17 +45,30 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install PlatformIO
-        run: pip install platformio
+      - name: Install build & verification dependencies
+        run: pip install platformio==6.2.0 pillow
 
-      - name: Build firmware
+      - name: Rebuild Web UI & RAG index + run verification suite
         run: |
-          pio run -e lolin_s3_mini_1_69
-          mv .pio/build/lolin_s3_mini_1_69/firmware.bin .pio/build/lolin_s3_mini_1_69/tamagrotchi.bin
+          python tools/build_web_gz.py
+          python tools/build_rag_index.py
+          python llm_training/data_pipeline/curate_dataset.py
+          python test/verify_zoogotchi_suite.py
+          python llm_training/generate_zoo_dataset.py --dry-run --per-species 64
+          python tools/generate_study_deck.py --topic "NeetCode 150" --dry-run
+          python tools/generate_zoo_sprites.py --dry-run --missing-only
 
-      - name: Upload build artifact
+      - name: Build firmware & filesystem
+        run: |
+          pio run -e waveshare_s3_169
+          pio run -e waveshare_s3_169 -t buildfs
+          cp .pio/build/waveshare_s3_169/firmware.bin .pio/build/waveshare_s3_169/zoogotchi-s3.bin
+
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: firmware
-          path: .pio/build/lolin_s3_mini_1_69/tamagrotchi.bin
+          name: zoogotchi-s3-firmware
+          path: |
+            .pio/build/waveshare_s3_169/zoogotchi-s3.bin
+            .pio/build/waveshare_s3_169/littlefs.bin
           retention-days: 30

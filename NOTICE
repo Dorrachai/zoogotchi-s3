@@ -1,0 +1,16 @@
+ZooGotchi S3
+Copyright 2026 ZooGotchi S3 Contributors
+
+This product includes hardware bring-up scaffolding and build configuration
+derived from TamaGROTchi (https://github.com/grafana/TamaGROTchi),
+licensed under the Apache License, Version 2.0.
+
+All Grafana Labs names, logos, OpenTelemetry telemetry exporters, and the
+"Grot" character assets/artwork from the upstream repository have been removed.
+ZooGotchi S3 is an independent open-source project and is not affiliated with,
+endorsed by, or sponsored by Grafana Labs.
+
+All real-zoo species, Karimono lineage/genetics mechanics, touch/IMU/sleep
+controllers, on-chip Per-Layer Embedding (PLE) micro-LLM runtime & safety
+guardrails, and the local Web/Phone PWA are original works or adaptations
+under the Apache License, Version 2.0.

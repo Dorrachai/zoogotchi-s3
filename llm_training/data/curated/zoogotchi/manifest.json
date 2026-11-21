@@ -1,0 +1,42 @@
+{
+  "domain": "zoogotchi",
+  "dataset_sha256": "eec627e2bb3616a8885d26877ca48ab2558e2fbc5b1cb9009b4f1c3465d2172f",
+  "v_out_size": 1421,
+  "raw_count": 1248,
+  "exact_dups_removed": 80,
+  "near_dups_removed": 0,
+  "curated_total": 1168,
+  "splits": {
+    "train": 934,
+    "val": 117,
+    "test": 117
+  },
+  "prompt_overlap_count": 0,
+  "quality_gates": {
+    "ascii_only": true,
+    "zero_unk_targets": true,
+    "zero_pii_or_blocklist": true,
+    "classes_covered": 18,
+    "expected_classes": 18
+  },
+  "class_histogram": {
+    "axolotl": 64,
+    "barn_owl": 64,
+    "capybara": 64,
+    "chameleon": 64,
+    "fennec_fox": 64,
+    "hercules_beetle": 64,
+    "hoshi_karimono": 68,
+    "hummingbird": 64,
+    "kumo_karimono": 68,
+    "kuro_karimono": 64,
+    "leopard_gecko": 64,
+    "manatee": 68,
+    "monarch": 64,
+    "octopus": 64,
+    "orchid_mantis": 64,
+    "red_panda": 68,
+    "scarlet_macaw": 64,
+    "tortoise": 64
+  }
+}

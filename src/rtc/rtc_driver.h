@@ -1,21 +1,22 @@
 #pragma once
 #include <stdint.h>
+#include <stdbool.h>
 #include <time.h>
 
 // =============================================================================
-// RTC Driver — PCF85063A via Wire (I2C 0x51)
-// Provides hardware-backed time that survives power loss.
-// NTP time (from configTime/SNTP) is written back to the RTC once synced.
+// RTC Driver — PCF85063A (I2C 0x51) with Rechargeable Backup Coin Cell
+// Preserves wall-clock epoch across main LiPo swaps and deep sleep cycles.
 // =============================================================================
 
-void rtc_driver_init();
+void    rtc_driver_init();
+bool    rtc_driver_is_ready();
+bool    rtc_driver_read(struct tm* out_tm);
+time_t  rtc_get_epoch();
+void    rtc_set_epoch(time_t epoch_utc);
+void    rtc_driver_sync_from_ntp(time_t epoch_utc);
+uint8_t rtc_get_hour(int16_t tz_offset_min = 0);
+uint8_t rtc_get_minute(int16_t tz_offset_min = 0);
 
-// Read the current RTC time into a `struct tm` (returns false if read fails).
-bool rtc_driver_read(struct tm* out_tm);
-
-// Write a time_t (epoch seconds, UTC) into the RTC.
-// Call this once after NTP sync so the RTC stays accurate.
-void rtc_driver_sync_from_ntp(time_t epoch_utc);
-
-// Convenience: return the hour-of-day (0–23) from the RTC, or 12 on error.
-uint8_t rtc_get_hour();
+// Program PCF85063A countdown timer interrupt (GPIO39 active-LOW) for deep sleep.
+void    rtc_set_wakeup_minutes(uint16_t minutes);
+void    rtc_clear_alarm();

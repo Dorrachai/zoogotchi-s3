@@ -5,24 +5,19 @@
 #include <ArduinoJson.h>
 
 static void apply_defaults(AppConfig* cfg) {
-    strlcpy(cfg->wifi_ssid,       WIFI_SSID_DEFAULT,    sizeof(cfg->wifi_ssid));
-    strlcpy(cfg->wifi_password,   WIFI_PASS_DEFAULT,    sizeof(cfg->wifi_password));
-    strlcpy(cfg->otlp_base,       OTLP_BASE_URL_DEFAULT, sizeof(cfg->otlp_base));
-    strlcpy(cfg->auth_b64,        OTLP_AUTH_DEFAULT,    sizeof(cfg->auth_b64));
-    strlcpy(cfg->device_id,       OTLP_DEVICE_ID_DEFAULT, sizeof(cfg->device_id));
-    cfg->demo_speed         = true;
-    cfg->push_interval_s    = TELEMETRY_PUSH_INTERVAL_MS / 1000;
-    cfg->sample_interval_s  = TELEMETRY_SAMPLE_INTERVAL_MS / 1000;
-    cfg->buzzer_enabled   = true;
-    cfg->flash_alerts     = true;
-    cfg->bgr_order        = false;  // UK-sourced panels are wired RGB
+    memset(cfg, 0, sizeof(AppConfig));
+    cfg->demo_speed     = false;
+    cfg->buzzer_enabled = true;
+    cfg->flash_alerts   = true;
+    cfg->bgr_order      = false;
+    cfg->brightness     = LCD_BL_NORMAL;
+    cfg->tz_offset_min  = 0;
 }
 
 bool config_manager_load(AppConfig* cfg) {
     apply_defaults(cfg);
 
-    // Partition label must match partitions_16M.csv name ("littlefs", not "spiffs")
-    if (!LittleFS.begin(false, "/littlefs", 10, "littlefs")) {
+    if (!LittleFS.begin(true, "/littlefs", 10, "littlefs")) {
         Serial.println("[config] LittleFS mount failed — using defaults");
         return false;
     }
@@ -41,56 +36,66 @@ bool config_manager_load(AppConfig* cfg) {
     JsonDocument doc;
     DeserializationError err = deserializeJson(doc, f);
     f.close();
-
     if (err) {
         Serial.printf("[config] JSON parse error: %s — using defaults\n", err.c_str());
         return false;
     }
 
-    // WiFi
     if (doc["wifi"]["ssid"].is<const char*>())
         strlcpy(cfg->wifi_ssid, doc["wifi"]["ssid"], sizeof(cfg->wifi_ssid));
     if (doc["wifi"]["password"].is<const char*>())
         strlcpy(cfg->wifi_password, doc["wifi"]["password"], sizeof(cfg->wifi_password));
 
-    // Grafana
-    if (doc["grafana"]["otlp_base"].is<const char*>())
-        strlcpy(cfg->otlp_base, doc["grafana"]["otlp_base"], sizeof(cfg->otlp_base));
-    if (doc["grafana"]["auth_b64"].is<const char*>())
-        strlcpy(cfg->auth_b64, doc["grafana"]["auth_b64"], sizeof(cfg->auth_b64));
-    if (doc["grafana"]["device_id"].is<const char*>())
-        strlcpy(cfg->device_id, doc["grafana"]["device_id"], sizeof(cfg->device_id));
-
-    // Game
     if (doc["game"]["demo_speed"].is<bool>())
         cfg->demo_speed = doc["game"]["demo_speed"];
-    if (doc["game"]["push_interval_s"].is<uint32_t>())
-        cfg->push_interval_s = doc["game"]["push_interval_s"];
-    if (doc["game"]["sample_interval_s"].is<uint32_t>())
-        cfg->sample_interval_s = doc["game"]["sample_interval_s"];
     if (doc["game"]["buzzer"].is<bool>())
         cfg->buzzer_enabled = doc["game"]["buzzer"];
     if (doc["game"]["flash_alerts"].is<bool>())
         cfg->flash_alerts = doc["game"]["flash_alerts"];
+    if (doc["game"]["tz_offset_min"].is<int>())
+        cfg->tz_offset_min = (int16_t)doc["game"]["tz_offset_min"];
 
-    // Display
     if (doc["display"]["bgr_order"].is<bool>())
         cfg->bgr_order = doc["display"]["bgr_order"];
+    if (doc["display"]["brightness"].is<int>()) {
+        int b = doc["display"]["brightness"];
+        if (b < 20) b = 20;
+        if (b > 255) b = 255;
+        cfg->brightness = (uint8_t)b;
+    }
 
-    Serial.println("[config] Loaded from /config.json");
+    Serial.println("[config] Loaded /config.json");
     return true;
 }
 
+bool config_manager_save(const AppConfig* cfg) {
+    if (!cfg) return false;
+    JsonDocument doc;
+    doc["wifi"]["ssid"]           = cfg->wifi_ssid;
+    doc["wifi"]["password"]       = cfg->wifi_password;
+    doc["game"]["demo_speed"]     = cfg->demo_speed;
+    doc["game"]["buzzer"]         = cfg->buzzer_enabled;
+    doc["game"]["flash_alerts"]   = cfg->flash_alerts;
+    doc["game"]["tz_offset_min"]  = cfg->tz_offset_min;
+    doc["display"]["bgr_order"]   = cfg->bgr_order;
+    doc["display"]["brightness"]  = cfg->brightness;
+
+    File f = LittleFS.open("/config.tmp", "w");
+    if (!f) return false;
+    size_t written = serializeJson(doc, f);
+    f.close();
+    if (written == 0) return false;
+
+    if (LittleFS.exists("/config.json")) LittleFS.remove("/config.json");
+    return LittleFS.rename("/config.tmp", "/config.json");
+}
+
 void config_manager_print(const AppConfig* cfg) {
-    Serial.printf("[config] wifi_ssid:      %s\n", cfg->wifi_ssid);
-    Serial.printf("[config] otlp_base:      %s\n", cfg->otlp_base);
-    Serial.printf("[config] device_id:      %s\n", cfg->device_id);
-    Serial.printf("[config] demo_speed:     %s\n", cfg->demo_speed ? "true" : "false");
-    Serial.printf("[config] push_interval:   %lu s\n", cfg->push_interval_s);
-    Serial.printf("[config] sample_interval: %lu s\n", cfg->sample_interval_s);
-    Serial.printf("[config] buzzer:         %s\n", cfg->buzzer_enabled ? "on" : "muted");
-    Serial.printf("[config] flash_alerts:   %s\n", cfg->flash_alerts ? "on" : "off");
-    Serial.printf("[config] bgr_order:      %s\n", cfg->bgr_order ? "true (swap R/B)" : "false (RGB)");
-    Serial.printf("[config] auth_b64:       %.6s... (len=%d)\n",
-                  cfg->auth_b64, (int)strlen(cfg->auth_b64));
+    Serial.printf("[config] wifi_ssid:     %s\n", cfg->wifi_ssid[0] ? cfg->wifi_ssid : "(SoftAP only)");
+    Serial.printf("[config] demo_speed:    %s\n", cfg->demo_speed ? "true" : "false");
+    Serial.printf("[config] buzzer:        %s\n", cfg->buzzer_enabled ? "on" : "muted");
+    Serial.printf("[config] flash_alerts:  %s\n", cfg->flash_alerts ? "on" : "off");
+    Serial.printf("[config] bgr_order:     %s\n", cfg->bgr_order ? "true" : "false");
+    Serial.printf("[config] brightness:    %u\n", cfg->brightness);
+    Serial.printf("[config] tz_offset_min: %d\n", cfg->tz_offset_min);
 }

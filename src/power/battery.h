@@ -1,23 +1,9 @@
 #pragma once
 #include <stdint.h>
+#include <stdbool.h>
 
-// =============================================================================
-// Battery driver — GPIO1 BAT ADC (200kΩ/100kΩ voltage divider)
-//
-// Voltage divider scales battery voltage (3.0–4.2V) to ADC range (1.0–1.4V).
-// 16 samples are averaged to reduce ADC noise.
-// =============================================================================
-
-// Call once in setup() — configures ADC attenuation and resolution.
-void battery_init();
-
-// Read battery voltage in volts (e.g. 3.7). Averages BAT_ADC_SAMPLES readings.
-float battery_read_voltage();
-
-// Returns battery level as 0–100, clamped. Based on 3.0V=0% / 4.2V=100%.
+void    battery_init();
+float   battery_read_voltage();
 uint8_t battery_get_percent();
-
-// Map a pre-sampled voltage to 0–100 without touching the ADC. Use this when a
-// caller already has a voltage reading and wants to avoid a second 16-sample
-// average.
 uint8_t battery_v_to_percent(float v);
+bool    battery_is_low_brownout(float v);

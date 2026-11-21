@@ -13,3 +13,9 @@ __pycache__/
 data/config.json
 simulator/config.json
 .env
+
+# Large local generated PNGs, checkpoints, batch payloads, and SQLite scratch DB
+tools/raw_sprites/
+llm_training/out/
+llm_training/data/batch_requests.jsonl
+llm_training/registry/experiments.db

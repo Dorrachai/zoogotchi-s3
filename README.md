@@ -1,235 +1,121 @@
-# Tamagrotchi
+# ZooGotchi S3 — Standalone Real-Zoo & Karimono Virtual Pet
 
-A Tamagotchi for Grafana users, featuring **Grot** as your virtual pet.
-Keep Grot alive, watch him evolve, and observe his vital signs flowing into Grafana Cloud as OTLP metrics, logs, and traces.
-
-Built for Grafana Labs Hackathon and featuring at the GrafanaCon Science Fair
-
-<img width="2463" height="1151" alt="image" src="https://github.com/user-attachments/assets/6bf8a0a8-1c5c-4d36-9dbd-52924fc1d1eb" />
+An open-source, pocket-sized virtual pet for the **Waveshare ESP32-S3-Touch-LCD-1.69** (`16 MB Flash / 8 MB OPI PSRAM`), powered by a **3.7V 1000mAh LiPo**, a **rechargeable RTC backup coin cell**, and a custom **3D-printed enclosure** (Bambu Lab X1 Carbon + 4× M2×6mm self-tapping screws). **Zero PC required at runtime.**
 
 ---
 
-## Building & Flashing
+## Key Features
 
-```bash
-# Install PlatformIO CLI if needed
-pip install platformio
-
-# Build
-pio run
-
-# Flash firmware
-pio run --target upload
-
-# Flash filesystem (config.json)
-pio run --target uploadfs
-
-# Serial monitor
-pio device monitor
-```
-
----
-
-## Configuration
-
-Copy `data/config.json.example` to `data/config.json` and fill in your credentials:
-
-```json
-{
-  "wifi": {
-    "ssid": "YOUR_SSID",
-    "password": "YOUR_PASSWORD"
-  },
-  "grafana": {
-    "otlp_base": "https://otlp-gateway-prod-<region>.grafana.net/otlp",
-    "auth_b64":  "Basic <your_grafana_cloud_token>",
-    "device_id": "tamagrotchi"
-  },
-  "game": {
-    "demo_speed": false,
-    "push_interval_s": 60,
-    "buzzer": true,
-    "flash_alerts": true
-  },
-  "display": {
-    "bgr_order": false
-  }
-}
-```
-
-If your display colours seem odd, then set bgr_order to true
-
-> **Auth note:** `auth_b64` must be `Basic <base64(instanceId:glc_token)>` — Grafana Cloud OTLP uses standard Basic auth where the username is your stack's OTLP instance ID and the password is the `glc_` token. Find the instance ID on the **OpenTelemetry → Configure** page of your Grafana Cloud stack, then encode the pair with:
->
-> ```sh
-> echo -n "<instanceId>:<glc_token>" | base64
-> ```
->
-> Passing the raw `glc_` token after "Basic" will result in `401 Unauthorized`.
-
-Upload the filesystem image after editing: **PlatformIO → Upload Filesystem Image**.
+1. **6 Categories × 3 Species (18 Total):**
+   - **Land (Permadeath):** Red Panda, Fennec Fox, Capybara
+   - **Sky (Permadeath):** Barn Owl, Scarlet Macaw, Ruby Hummingbird
+   - **Insect (Permadeath):** Monarch Butterfly (full metamorphosis!), Hercules Beetle, Orchid Mantis
+   - **Water (Permadeath):** **West Indian Manatee**, Axolotl, Giant Pacific Octopus
+   - **Reptile (Permadeath):** Galapagos Tortoise, Veiled Chameleon (mood-reactive hue!), Leopard Gecko
+   - **Karimono (Cross-Breedable Lineage):** Hoshi-Karimono, Kumo-Karimono, Kuro-Karimono
+2. **Authentic Lifecycles vs Lineage:**
+   - **Real Zoo Animals** follow authentic circadian schedules (diurnal, nocturnal, crepuscular, cathemeral) via the `PCF85063A` RTC and experience real **permadeath** (from natural old age or severe neglect), leaving a permanent tribute in `/memorial.json`.
+   - **Karimono** can **cross-breed** at Adult stage (offline Plaza Spirit or via 12-char Base32 Genome Codes) to pass down modular traits, colors, and rare mutations across generations in `/lineage.json`.
+3. **100% On-Chip Safe Personality & Micro-LLM:**
+   - **3-Layer Defense-in-Depth Safety:** Asymmetric output vocabulary (`include/zoo_vocab_out.h`, 1,421 audited safe words), Layer 2 prompt-injection & leetspeak sanitizer, and Layer 3 output length/loop validator.
+   - Runs a **Per-Layer Embedding (PLE) INT4** transformer directly from Flash/PSRAM (`llm_model` partition) on Core 0, plus an instant species/trait/memory-aware fallback engine right out of the box!
+4. **Spaced-Repetition Learning Academy & LeetCode Drills (`PCF85063A` SM-2):**
+   - **5 Built-In Decks (106 Cards):** *LeetCode / NeetCode Patterns* (24 cards), *Big-O & Interview Edge Cases* (16 cards), *Spanish Vocab* (20 cards), *Japanese JLPT (N4-N1)* (28 cards), and *Zoo Biology* (18 cards), plus up to **40 Custom Cards** uploaded from your phone (including 1-tap *NeetCode Trees/Graphs/DP* and *JLPT N2/N1 Bonus* packs).
+   - **Focus / Pomodoro Study Buddy:** 15m / 25m LeetCode Sprint / 35m Mock Interview countdown ring beside your pet.
+   - **Protégé Effect & Rewards:** Mastered words/patterns unlock Zoo Coins, Scholar Glasses / Grad Cap cosmetics, and appear in your pet's memory & AI replies.
+5. **Touch, 6-Axis IMU Play & Deep Sleep:**
+   - Capacitive touch (`CST816T`) + petting strokes, 3 mini-games (`Forage Catch` IMU tilt, `Habitat Care` touch, `Rhythm Chirp` buzzer), pocket step-walker (`QMI8658C`), Zoo Shop, and 4-stage deep sleep.
+6. **Local Phone Web Chat & Study Studio (No PC):**
+   - Double-press `PWR` (or tap the top-right battery pill / Menu) to start **`ZooGotchi-S3`** SoftAP (or Home Wi-Fi STA) and chat, cross-breed, sync clock, or upload custom LeetCode/language decks right from your phone browser (`http://192.168.4.1` or `http://zoogotchi.local`, with on-screen QR code!).
 
 ---
 
+## Project Layout (Where to Edit)
 
-## Hardware
-
-The physical device is built around a Waveshare ESP32-S3-Touch-LCD-1.69
-
-| Component | Detail |
+| What You Want to Edit | Folder / Files |
 |---|---|
-| MCU | ESP32-S3, dual-core 240 MHz, 8 MB PSRAM |
-| Display | 240×280 ST7789V2 IPS, SPI @ 40 MHz |
-| IMU | QMI8658C (accel + gyro) via I2C |
-| RTC | PCF85063A via I2C |
-| Touch | CST816 capacitive (I2C) |
-| Buttons | A / B / C (GPIO3, 17, 18 — active-LOW) |
-| Buzzer | GPIO42 via LEDC |
-| Battery | LiPo with ADC divider on GPIO1 |
-
-A printable case is included in `hardware/` (STL + 3MF).
-
-Instructions are available at [hardware/hardware-bom.md](hardware/hardware-bom.md)
+| **Animal Categories & Species** | [`src/zoo/categories/`](src/zoo/categories/) (`land.h`, `sky.h`, `insect.h`, `water.h`, `reptile.h`, `karimono.h`) |
+| **Study & Language Flashcard Decks** | [`src/learn/decks/`](src/learn/decks/) (`dsa_patterns.h`, `dsa_bigo.h`, `spanish.h`, `japanese_jlpt.h`, `zoo_bio.h`) |
+| **Mini-Games** | [`src/game/minigames/`](src/game/minigames/) (`forage_catch.cpp`, `habitat_care.cpp`, `rhythm_chirp.cpp`) |
+| **Micro-LLM, BM25 RAG & Safety** | [`src/ai/`](src/ai/) (`micro_llm_ple.cpp`, `rag_retriever.cpp`, `safety_guardrails.cpp`, `personality_memory.cpp`) |
+| **Packed Pixel-Art Sprites & RAG Index** | [`data/sprites/`](data/sprites/) (`*_3.bin`), [`data/rag/kb.bin`](data/rag/kb.bin) |
+| **Phone Companion Web App** | [`web_ui/index.html`](web_ui/index.html) (packed by `tools/build_web_gz.py`) |
+| **Dataset Curation, Hybrid RAG & Post-Training** | [`llm_training/`](llm_training/) (`data_pipeline/`, `rag/`, `post_training/`, `eval/`, `tracking/`) |
 
 ---
 
-## The App
+## Hardware Safety Warnings (Read First!)
 
-### Grot's Life Cycle
-- 6 life stages: **Egg → Baby → Child → Teen → Adult → Senior**
-- Evolution triggered by age thresholds, with an "EVOLVING…" overlay and melody
-- **Evolution quality** (Excellent / Good / Tired) determined by accumulated care mistakes — affects which sprite set is shown
+> **CRITICAL — Battery & Coin Cell Wiring:**
+> 1. **1000mAh LiPo `MX1.25` Polarity:** Verify Red (`+`) / Black (`-`) against the Waveshare PCB silkscreen before plugging in — generic LiPo leads are often wired backwards and can short the `ETA6098` charger.
+> 2. **Rechargeable RTC Coin Cell Only:** The `SH1.0` RTC connector trickle-charges the cell. Only use a **rechargeable** coin cell (`ML414` / `MS621FE`), never a primary `CR`-series coin cell.
 
-### Vitals
-- **Hunger**, **Happiness**, **Health** — all 0–100
-- Stats decay each game tick; health slowly recovers when both hunger and happiness are above 50
-- Alerts fire (buzzer + log) when either falls below threshold
-- Sustained low hunger causes sickness; untreated sickness causes death
-
-### Player Actions
-| Button | Action |
-|---|---|
-| A | Previous Menu |
-| B | Select |
-| C | Next Menu |
-| B (when Idle) | Cycle through animations |
-| Gentle shake | Play / wake from sleep |
-| Hard shake | Dizzy (-5 happiness, status effect) |
-
-### Sleep / Wake
-- Grot sleeps from 22:00 to 08:00 (RTC-based)
-- Waking him early is a care mistake
-- NTP time is synced to the hardware RTC on first WiFi connection
-
-### Sprites
-All frames use `LV_COLOR_FORMAT_RGB565A8` (RGB565 + alpha map), rendered at 3× scale via LVGL image-level transforms.
-
-| Sprite sheet | Size | Frames | Used for |
-|---|---|---|---|
-| `egg-shake.png` | 38×38 | 3 | Egg idle + periodic shake animation |
-| `grot.png` | 32×32 | 4 | Baby idle, tired adult idle |
-| `grot-blink.png` | 32×32 | 2 | Sleeping |
-| `grot-wave.png` | 32×32 | 6 | Happy (baby, child, good adult) |
-| `grot-walk.png` | 32×32 | 8 | Child idle, excellent adult idle (+ left-facing variant) |
-| `grot-jumping.png` | 32×32 | 8 | Happy (excited adult), dizzy (last 4 fr) |
-| `grot-thinks.png` | 32×32 | 5 | Sad, sick, dead |
-
-The egg sits still for ~3 s then shakes (three 50 ms frames) before returning to rest.
-
-### Telemetry → Grafana Cloud
-All telemetry is sent via **OTLP/HTTP JSON** to Grafana Cloud on a configurable interval (default 60 s).
-
-**Metrics** (`/v1/metrics`):
-- `grot.hunger`, `grot.happiness`, `grot.health` — vital signs
-- `grot.age_seconds` — pet age
-- `grot.care_mistakes` — evolution quality indicator
-- `grot.battery_voltage` — LiPo charge level
-- `grot.wifi_rssi` — signal strength
-- `grot.accel_mag` — IMU acceleration magnitude
-
-**Logs** (`/v1/logs`): structured events including boot, hunger alerts, happiness alerts, feeding, playing, sickness, evolution, and death.
-
-**Traces** (`/v1/traces`): spans for user actions (feed, play, medicine, discipline) and game events.
-
-Each device generates a random `game_id` (e.g. `Lokirzu`, `Grotpup`) from ~2 025 combinations, used as `service.name` across all three signals so metrics, logs, and traces correlate automatically in Grafana.
-
-The OTLP push runs on a background FreeRTOS task (Core 0) so the game loop is never blocked by network I/O. A small notification confirms each push.
-
+See [`hardware/enclosure_notes.md`](hardware/enclosure_notes.md) for Bambu Lab X1 Carbon fitment and M2×6mm screw boss guidelines.
 
 ---
 
-## PC Simulator
+## Build & Flash Instructions
 
-`simulator/` is a Python multi-instance simulator that produces **format-identical OTLP telemetry** to the ESP32 firmware — useful for load-testing dashboards or generating a rich dataset without hardware.
+Run the complete automated check & build gate (or individual steps below):
 
-```bash
-cd simulator
-pip install -r requirements.txt
-
-python sim.py \
-  --instances 20 \
-  --otlp-base https://otlp-gateway-prod-us-east-0.grafana.net/otlp \
-  --auth "Basic glc_..." \
-  --speed 1.0 \
-  --push-interval 30
+```powershell
+powershell -ExecutionPolicy Bypass -File "..\.agents\skills\zoogotchi-s3\scripts\check_all.ps1"
 ```
 
-Or create `simulator/config.json` (see `config.json.example`) and just run `python sim.py`.
+```powershell
+# 1. Activate virtual env (if using D:\ cache on tight C:\ drives, set PLATFORMIO_CORE_DIR)
+$env:PLATFORMIO_CORE_DIR = "d:\.platformio"
 
-We also have a helm chart to deploy a fleet of Grots to your k8s cluster
+# 2. Build & audit safe vocabulary + Phone Web PWA + verification suite
+.\.venv\Scripts\python.exe llm_training\build_asymmetric_vocab.py
+.\.venv\Scripts\python.exe llm_training\verify_vocab_safety.py
+.\.venv\Scripts\python.exe tools\build_web_gz.py
+.\.venv\Scripts\python.exe test\verify_zoogotchi_suite.py
 
-**Options:**
+# 3. Compile firmware & LittleFS image (includes /web/index.html.gz + /sprites/*_3.bin)
+.\.venv\Scripts\pio.exe run -e waveshare_s3_169
+.\.venv\Scripts\pio.exe run -e waveshare_s3_169 -t buildfs
 
-| Flag | Default | Description |
-|---|---|---|
-| `--instances N` | 5 | Number of simultaneous pets |
-| `--otlp-base URL` | — | OTLP gateway base URL |
-| `--auth TOKEN` | — | `Basic <base64(instanceId:glc_token)>` auth header |
-| `--speed FLOAT` | 1.0 | Simulation speed multiplier |
-| `--push-interval S` | 30 | OTLP push interval in seconds |
-| `--verbose` | off | Print per-push HTTP status |
-| `--no-traces` | off | Skip trace pushes |
-| `--no-logs` | off | Skip log pushes |
-
-Instance 0 is always named **Beylazu** — a fixed anchor for dashboards. All other instances get randomised `game_id` names.
-
----
-
-
----
-
-
-
-## Adding / Updating Sprites
-
-```bash
-# Re-convert a sprite sheet (frames arranged horizontally, height = frame size)
-python3 tools/png_to_lvgl.py src/sprites/grot-wave.png
-
-# The script outputs one .cpp file per frame, e.g. grot_wave_0.cpp … grot_wave_5.cpp
-# Wire new frames into src/sprites/grot_frames.cpp
+# 4. Flash firmware + LittleFS over USB-C
+.\.venv\Scripts\pio.exe run -e waveshare_s3_169 -t upload
+.\.venv\Scripts\pio.exe run -e waveshare_s3_169 -t uploadfs
 ```
 
-The egg sprite (`egg-shake.png`) uses 38×38 px frames; all other sprites use 32×32 px.
+### AI Sprites & Custom Study Decks (`google-genai` Interactions API)
+- **Sprites (`data/sprites/`):** 12 species pixel-art sprites (`barn_owl`, `capybara`, `chameleon`, `fennec_fox`, `hercules_beetle`, `kumo_karimono`, `leopard_gecko`, `manatee`, `monarch`, `orchid_mantis`, `red_panda`, `tortoise`) are pre-packed (`12,292 B` each with border flood-fill alpha keying); the remaining 6 render cleanly via the built-in animated C++ renderer until topped up with your `GEMINI_API_KEY` (in `.env` or env):
+  ```powershell
+  .\.venv\Scripts\python.exe tools\generate_zoo_sprites.py --missing-only --pack
+  ```
+- **Custom Study Decks:** Generate flashcards with `gemini-3.8-flash` structured JSON output (`tools/generate_study_deck.py --topic "JLPT N2" --count 15`).
+
+### Train & Flash On-Chip PLE Micro-LLM Weights (`zoo_pet.bin`)
+1. Curate zero-leakage train/val/test splits (`llm_training/data_pipeline/curate_dataset.py`) or generate fresh samples with `generate_zoo_dataset.py` (`--dry-run`, `--live`, or `--submit-batch`).
+2. Run the reproducible GPU post-training suite (**Base SFT -> LoRA SFT -> GRPO vs SAPO -> INT4 ZPLE export + C++ parity**):
+   ```powershell
+   .\.venv\Scripts\python.exe llm_training\rag\hybrid_rag.py
+   .\.venv\Scripts\python.exe llm_training\post_training\run_post_training_suite.py
+   .\.venv\Scripts\python.exe llm_training\eval\benchmark_suite.py
+   ```
+   *(Or run `llm_training/train_ple_zoopet.py --epochs 45 --verify` / [`llm_training/train_ple_zoopet.ipynb`](llm_training/train_ple_zoopet.ipynb) directly.)*
+3. Flash `llm_training/out/zoo_pet.bin` (`3,543,028 B` <= `9.875 MB`) to the `llm_model` partition (`0x610000`):
+   ```powershell
+   D:\.platformio\packages\tool-esptoolpy\esptool.py --chip esp32s3 write_flash 0x610000 llm_training\out\zoo_pet.bin
+   ```
 
 ---
 
-## Tech Stack
+## On-Device RAG & Micro-LLM Post-Training
 
-| Layer | Library |
-|---|---|
-| Framework | Arduino (ESP-IDF 5.x underneath) |
-| Build system | PlatformIO |
-| Display driver | LovyanGFX 1.1.16 |
-| UI toolkit | LVGL v9.3.0 |
-| JSON | ArduinoJson 7.1.0 |
-| IMU | FastIMU 1.2.6 |
-| Filesystem | LittleFS |
-| Telemetry | OTLP/HTTP JSON (custom, no SDK) |
+All training, alignment, and retrieval components run reproducibly on the local RTX 3060 GPU and deploy straight to the ESP32-S3:
+
+- **On-Device & Host Hybrid RAG:** Packed binary BM25 index (`/rag/kb.bin`, `42,216 B`, `108` chunks across species care, DSA, JLPT N4–N1, genetics, and hardware) queried directly on the ESP32-S3 (`src/ai/rag_retriever.cpp`, `POST /api/rag`), benchmarked against host **BM25 Sparse vs Dense SVD vs Hybrid RRF** (`llm_training/rag/hybrid_rag.py`, `R@1 = 1.000`, `nDCG@5 = 0.970` across 36 queries).
+- **Zero-Leakage Curation & LoRA + GRPO/SAPO Post-Training:** Automated SHA-256 + 3-gram Jaccard dedup with 0-prompt-overlap splits (`llm_training/data_pipeline/curate_dataset.py`), followed by `Base SFT` (`R = 0.4865`, `41.0%` species match) -> `LoRA SFT` (`r=8`, `3.20%` trainable weights, `R = 0.9347`, `100.0%` match) -> **`GRPO`** (`R = 0.9381`) vs **`SAPO`** (`R = 0.9313`, lower KL drift `0.0021` vs `0.0071`) -> INT4 `zoo_pet.bin` (`0.9992` C++ parity), logged to SQLite (`llm_training/tracking/experiment_tracker.py`).
+- **Architecture & Benchmarks:**
+  - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — Hardware, on-device RAG, post-training pipeline & safety stack
+  - [`docs/BENCHMARK_REPORT.md`](docs/BENCHMARK_REPORT.md) — Auto-generated SFT/LoRA/GRPO/SAPO & Hybrid RAG benchmarks + [SVG training curves](docs/assets/training_curves.svg)
 
 ---
 
+## License & Attribution
 
-## Contributing
-
-Using Visual Studio Code, the easiest way is to install the PlatformIO extension. You can then rely on the PlatformIO config in the repo to build, monitor, and flash the hardware.
+Licensed under the **Apache License, Version 2.0** (`LICENSE`). See `NOTICE` for upstream hardware bring-up attribution and trademark notices.

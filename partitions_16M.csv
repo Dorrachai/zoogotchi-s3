@@ -1,13 +1,12 @@
-# Tamagrotchi — 16 MB flash partition table
-#
+# ZooGotchi S3 — 16 MB Flash Partition Table
 # Total flash: 16 MB (0x1000000)
-# Bootloader: 0x1000–0x8000 (reserved by ESP-IDF, not listed here)
-# Partition table: 0x8000–0xA000
+# Bootloader: 0x0000–0x8000 | Partition table: 0x8000–0x9000
+# Verified sum: 0x10000 + 0x380000 + 0x280000 + 0x9E0000 + 0x10000 = 0x1000000 (16 MB exact)
 #
-# Name,   Type, SubType, Offset,   Size,     Flags
-nvs,      data, nvs,     0x9000,   0x5000,
-otadata,  data, ota,     0xe000,   0x2000,
-app0,     app,  ota_0,   0x10000,  0x300000,
-app1,     app,  ota_1,   0x310000, 0x300000,
-littlefs, data, spiffs,  0x610000, 0x200000,
-coredump, data, coredump,0x810000, 0x10000,
+# Name,    Type, SubType,  Offset,   Size,     Flags
+nvs,       data, nvs,      0x9000,   0x5000,
+otadata,   data, ota,      0xe000,   0x2000,
+app0,      app,  ota_0,    0x10000,  0x380000,
+littlefs,  data, spiffs,   0x390000, 0x280000,
+llm_model, data, 0x40,     0x610000, 0x9E0000,
+coredump,  data, coredump, 0xFF0000, 0x10000,

@@ -1,0 +1,243 @@
+{
+  "schema_version": 1,
+  "variants": [
+    {
+      "run_id": "zoogotchi-base_sft-20261121-215912-08d8c0",
+      "domain": "zoogotchi",
+      "stage": "base_sft",
+      "parent_run_id": "",
+      "git_sha": "46f1233",
+      "artifact_path": "D:\\.gemini\\projects-save-in-this\\zoogotchi-s3\\llm_training\\out\\checkpoints\\zoogotchi\\base_sft.pt",
+      "metrics": {
+        "test_loss": 0.5123,
+        "test_perplexity": 1.67,
+        "mean_reward": 0.4865,
+        "r_accuracy": -0.028,
+        "r_rag": 0.1358,
+        "r_safety": 0.25,
+        "format_score": 0.1288,
+        "unsafe_rate": 0.0,
+        "domain_match_rate": 0.4103
+      },
+      "extra": {},
+      "registered_at": "2026-11-21T20:59:53Z"
+    },
+    {
+      "run_id": "zoogotchi-lora_sft-20261121-215953-c581a0",
+      "domain": "zoogotchi",
+      "stage": "lora_sft",
+      "parent_run_id": "zoogotchi-base_sft-20261121-215912-08d8c0",
+      "git_sha": "46f1233",
+      "artifact_path": "D:\\.gemini\\projects-save-in-this\\zoogotchi-s3\\llm_training\\out\\checkpoints\\zoogotchi\\lora_sft_merged.pt",
+      "metrics": {
+        "test_loss": 0.2427,
+        "test_perplexity": 1.27,
+        "mean_reward": 0.9347,
+        "r_accuracy": 0.3532,
+        "r_rag": 0.1815,
+        "r_safety": 0.25,
+        "format_score": 0.15,
+        "unsafe_rate": 0.0,
+        "domain_match_rate": 1.0,
+        "trainable_params": 175104,
+        "total_params": 5463936
+      },
+      "extra": {
+        "adapter_path": "D:\\.gemini\\projects-save-in-this\\zoogotchi-s3\\llm_training\\out\\checkpoints\\zoogotchi\\lora_sft_adapter.pt",
+        "trainable_pct": 3.2
+      },
+      "registered_at": "2026-11-21T21:01:05Z"
+    },
+    {
+      "run_id": "zoogotchi-grpo-20261121-220105-82dd5b",
+      "domain": "zoogotchi",
+      "stage": "grpo",
+      "parent_run_id": "zoogotchi-lora_sft-20261121-215953-c581a0",
+      "git_sha": "46f1233",
+      "artifact_path": "D:\\.gemini\\projects-save-in-this\\zoogotchi-s3\\llm_training\\out\\checkpoints\\zoogotchi\\grpo_merged.pt",
+      "metrics": {
+        "test_loss": 0.2508,
+        "test_perplexity": 1.29,
+        "mean_reward": 0.9381,
+        "r_accuracy": 0.3562,
+        "r_rag": 0.1818,
+        "r_safety": 0.25,
+        "format_score": 0.15,
+        "unsafe_rate": 0.0,
+        "domain_match_rate": 1.0,
+        "final_kl_div": 0.0071,
+        "final_entropy": 0.3486
+      },
+      "extra": {},
+      "registered_at": "2026-11-21T21:03:49Z"
+    },
+    {
+      "run_id": "zoogotchi-sapo-20261121-220349-981a76",
+      "domain": "zoogotchi",
+      "stage": "sapo",
+      "parent_run_id": "zoogotchi-lora_sft-20261121-215953-c581a0",
+      "git_sha": "46f1233",
+      "artifact_path": "D:\\.gemini\\projects-save-in-this\\zoogotchi-s3\\llm_training\\out\\checkpoints\\zoogotchi\\sapo_merged.pt",
+      "metrics": {
+        "test_loss": 0.2581,
+        "test_perplexity": 1.29,
+        "mean_reward": 0.9313,
+        "r_accuracy": 0.3545,
+        "r_rag": 0.1768,
+        "r_safety": 0.25,
+        "format_score": 0.15,
+        "unsafe_rate": 0.0,
+        "domain_match_rate": 1.0,
+        "final_kl_div": 0.0021,
+        "final_entropy": 0.3531
+      },
+      "extra": {},
+      "registered_at": "2026-11-21T21:06:33Z"
+    },
+    {
+      "run_id": "zoogotchi-grpo-20261121-220105-82dd5b-int4",
+      "domain": "zoogotchi",
+      "stage": "zple_int4_deployed",
+      "parent_run_id": "zoogotchi-grpo-20261121-220105-82dd5b",
+      "git_sha": "46f1233",
+      "artifact_path": "D:\\.gemini\\projects-save-in-this\\zoogotchi-s3\\llm_training\\out\\zoo_pet.bin",
+      "metrics": {
+        "test_loss": 0.2508,
+        "test_perplexity": 1.29,
+        "mean_reward": 0.9381,
+        "r_accuracy": 0.3562,
+        "r_rag": 0.1818,
+        "r_safety": 0.25,
+        "format_score": 0.15,
+        "unsafe_rate": 0.0,
+        "domain_match_rate": 1.0,
+        "final_kl_div": 0.0071,
+        "final_entropy": 0.3486,
+        "head_quant_rmse": 0.004147,
+        "winner_policy": "grpo"
+      },
+      "extra": {},
+      "registered_at": "2026-11-21T21:06:36Z"
+    }
+  ],
+  "latest_by_domain_stage": {
+    "zoogotchi:base_sft": {
+      "run_id": "zoogotchi-base_sft-20261121-215912-08d8c0",
+      "domain": "zoogotchi",
+      "stage": "base_sft",
+      "parent_run_id": "",
+      "git_sha": "46f1233",
+      "artifact_path": "D:\\.gemini\\projects-save-in-this\\zoogotchi-s3\\llm_training\\out\\checkpoints\\zoogotchi\\base_sft.pt",
+      "metrics": {
+        "test_loss": 0.5123,
+        "test_perplexity": 1.67,
+        "mean_reward": 0.4865,
+        "r_accuracy": -0.028,
+        "r_rag": 0.1358,
+        "r_safety": 0.25,
+        "format_score": 0.1288,
+        "unsafe_rate": 0.0,
+        "domain_match_rate": 0.4103
+      },
+      "extra": {},
+      "registered_at": "2026-11-21T20:59:53Z"
+    },
+    "zoogotchi:lora_sft": {
+      "run_id": "zoogotchi-lora_sft-20261121-215953-c581a0",
+      "domain": "zoogotchi",
+      "stage": "lora_sft",
+      "parent_run_id": "zoogotchi-base_sft-20261121-215912-08d8c0",
+      "git_sha": "46f1233",
+      "artifact_path": "D:\\.gemini\\projects-save-in-this\\zoogotchi-s3\\llm_training\\out\\checkpoints\\zoogotchi\\lora_sft_merged.pt",
+      "metrics": {
+        "test_loss": 0.2427,
+        "test_perplexity": 1.27,
+        "mean_reward": 0.9347,
+        "r_accuracy": 0.3532,
+        "r_rag": 0.1815,
+        "r_safety": 0.25,
+        "format_score": 0.15,
+        "unsafe_rate": 0.0,
+        "domain_match_rate": 1.0,
+        "trainable_params": 175104,
+        "total_params": 5463936
+      },
+      "extra": {
+        "adapter_path": "D:\\.gemini\\projects-save-in-this\\zoogotchi-s3\\llm_training\\out\\checkpoints\\zoogotchi\\lora_sft_adapter.pt",
+        "trainable_pct": 3.2
+      },
+      "registered_at": "2026-11-21T21:01:05Z"
+    },
+    "zoogotchi:grpo": {
+      "run_id": "zoogotchi-grpo-20261121-220105-82dd5b",
+      "domain": "zoogotchi",
+      "stage": "grpo",
+      "parent_run_id": "zoogotchi-lora_sft-20261121-215953-c581a0",
+      "git_sha": "46f1233",
+      "artifact_path": "D:\\.gemini\\projects-save-in-this\\zoogotchi-s3\\llm_training\\out\\checkpoints\\zoogotchi\\grpo_merged.pt",
+      "metrics": {
+        "test_loss": 0.2508,
+        "test_perplexity": 1.29,
+        "mean_reward": 0.9381,
+        "r_accuracy": 0.3562,
+        "r_rag": 0.1818,
+        "r_safety": 0.25,
+        "format_score": 0.15,
+        "unsafe_rate": 0.0,
+        "domain_match_rate": 1.0,
+        "final_kl_div": 0.0071,
+        "final_entropy": 0.3486
+      },
+      "extra": {},
+      "registered_at": "2026-11-21T21:03:49Z"
+    },
+    "zoogotchi:sapo": {
+      "run_id": "zoogotchi-sapo-20261121-220349-981a76",
+      "domain": "zoogotchi",
+      "stage": "sapo",
+      "parent_run_id": "zoogotchi-lora_sft-20261121-215953-c581a0",
+      "git_sha": "46f1233",
+      "artifact_path": "D:\\.gemini\\projects-save-in-this\\zoogotchi-s3\\llm_training\\out\\checkpoints\\zoogotchi\\sapo_merged.pt",
+      "metrics": {
+        "test_loss": 0.2581,
+        "test_perplexity": 1.29,
+        "mean_reward": 0.9313,
+        "r_accuracy": 0.3545,
+        "r_rag": 0.1768,
+        "r_safety": 0.25,
+        "format_score": 0.15,
+        "unsafe_rate": 0.0,
+        "domain_match_rate": 1.0,
+        "final_kl_div": 0.0021,
+        "final_entropy": 0.3531
+      },
+      "extra": {},
+      "registered_at": "2026-11-21T21:06:33Z"
+    },
+    "zoogotchi:zple_int4_deployed": {
+      "run_id": "zoogotchi-grpo-20261121-220105-82dd5b-int4",
+      "domain": "zoogotchi",
+      "stage": "zple_int4_deployed",
+      "parent_run_id": "zoogotchi-grpo-20261121-220105-82dd5b",
+      "git_sha": "46f1233",
+      "artifact_path": "D:\\.gemini\\projects-save-in-this\\zoogotchi-s3\\llm_training\\out\\zoo_pet.bin",
+      "metrics": {
+        "test_loss": 0.2508,
+        "test_perplexity": 1.29,
+        "mean_reward": 0.9381,
+        "r_accuracy": 0.3562,
+        "r_rag": 0.1818,
+        "r_safety": 0.25,
+        "format_score": 0.15,
+        "unsafe_rate": 0.0,
+        "domain_match_rate": 1.0,
+        "final_kl_div": 0.0071,
+        "final_entropy": 0.3486,
+        "head_quant_rmse": 0.004147,
+        "winner_policy": "grpo"
+      },
+      "extra": {},
+      "registered_at": "2026-11-21T21:06:36Z"
+    }
+  }
+}

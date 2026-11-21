@@ -1,6 +1,6 @@
 /**
  * @file lv_conf.h
- * Tamagrotchi LVGL v9.3.0 configuration
+ * ZooGotchi S3 LVGL v9.3.0 configuration
  */
 
 /* clang-format off */

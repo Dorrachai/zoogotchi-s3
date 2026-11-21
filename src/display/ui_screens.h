@@ -1,52 +1,67 @@
 #pragma once
+#include "../zoo/zoo_engine.h"
+#include "../config_mgr/config_manager.h"
+#include "../learn/study_decks.h"
 #include <lvgl.h>
-#include "../game/pet_state.h"
+#include <stdint.h>
+#include <stdbool.h>
 
 // =============================================================================
-// UI Screens — LVGL-based game interface
-//
-// Layout (240×280):
-//   Icon bar  36px  — 6 icons + age/wifi (A=prev, B=select, C=next)
-//   Sprite   150px  — Grot animation zone
-//   Bars      22px  — hunger/happiness/health
-//   Legend    16px  — labels under bars
-//   Hints     56px  — context-sensitive A/B/C button labels
+// ZooGotchi S3 — Rounded-Corner Touch UI State Machine (240x280 LVGL v9)
 // =============================================================================
 
-// Icon menu items
-enum class MenuItem : uint8_t {
-    STATUS   = 0,  // LV_SYMBOL_LIST   — full stats overlay
-    FEED     = 1,  // LV_SYMBOL_PLUS   — food choice sub-menu
-    CLEAN    = 2,  // LV_SYMBOL_TRASH  — clear waste
-    GAME     = 3,  // LV_SYMBOL_PLAY   — mini-game (stub)
-    LIGHTS   = 4,  // LV_SYMBOL_POWER  — toggle sleep/wake
-    MEDICINE = 5,  // LV_SYMBOL_CHARGE — give medicine
-    MENU_COUNT = 6,
+enum class UiScreen : uint8_t {
+    ADOPT_CAT     = 0,
+    ADOPT_SPECIES = 1,
+    HOME          = 2,
+    CARE          = 3,
+    PLAY          = 4,
+    SHOP          = 5,
+    JOURNAL       = 6,
+    MEMORIAL      = 7,
+    SETTINGS      = 8,
+    MINIGAME      = 9,
+    STUDY_HUB     = 10,
+    QUIZ          = 11,
+    FOCUS         = 12,
 };
 
-// Initialise all screens once in setup() after lvgl_port_init()
-void ui_screens_init();
+struct UiCallbacks {
+    void (*onAdoptSpecies)(uint8_t species_id);
+    void (*onZooAction)(ZooAction act);
+    void (*onAskPetTalk)();
+    void (*onBuyUseShop)(uint8_t item_idx);
+    void (*onBreedPlaza)();
+    void (*onStartMiniGame)(uint8_t game_idx); // 0=Forage, 1=HabitatTap, 2=Rhythm
+    void (*onToggleWifi)();
+    void (*onToggleMute)();
+    void (*onToggleDemo)();
+    void (*onToggleBgr)();
+    void (*onAdjustClockHour)(int8_t delta_hr);
+    void (*onOpenStudyHub)();
+    void (*onStartQuizDeck)(uint8_t deck_id);
+    void (*onQuizAnswer)(uint8_t choice_idx);
+    void (*onQuizNext)();
+    void (*onOpenFocus)();
+    void (*onStartFocus)(uint16_t minutes);
+    void (*onStopFocus)();
+};
 
-// Switch the active screen
-void ui_show_game();
-void ui_show_dead();
+void     ui_screens_init(const UiCallbacks& cbs);
+void     ui_show_screen(UiScreen scr);
+UiScreen ui_current_screen();
+void     ui_update_home(const ZooPetState* pet, const AppConfig* cfg,
+                        uint8_t local_hour, uint8_t local_min,
+                        uint8_t battery_pct, bool wifi_on, uint32_t now_ms);
+void     ui_show_speech_bubble(const char* text, uint32_t duration_ms = 6500);
+void     ui_hide_speech_bubble();
+void     ui_refresh_settings(const AppConfig* cfg, bool wifi_on, const char* ssid, const char* url);
+void     ui_refresh_memorial(const ZooPetState* dead_pet);
 
-// Update dynamic widgets each loop (after game_engine_update)
-void ui_update_vitals(const PetState* p);
-void ui_update_header(const PetState* p, bool wifi_connected, uint8_t battery_pct);
+void     ui_refresh_study_hub(int64_t now_epoch);
+void     ui_show_quiz_card(const char* deck_name, uint8_t q_num, uint8_t q_total, const StudyCard* card);
+void     ui_show_quiz_feedback(uint8_t picked_idx, uint8_t correct_idx, const char* takeaway);
+void     ui_refresh_focus(bool active, uint16_t duration_min, uint32_t rem_sec, uint8_t pct,
+                          bool demo_speed, const char* pet_name);
 
-// Icon menu — highlight the given icon (MENU_COUNT = clear all)
-void ui_menu_set_selected(MenuItem item);
-
-// Overlays rendered inside the sprite zone
-void ui_show_overlay_status(const PetState* p, float battery_v, const char* name);
-void ui_show_overlay_feed(int choice);      // choice: 0=Microchip, 1=SIN-wave
-void ui_show_overlay_text(const char* msg); // generic message (Clean result, Game stub, etc.)
-void ui_hide_overlay();
-
-// Context hints bar — pass "" to blank a slot
-void ui_set_hints(const char* a, const char* b, const char* c);
-
-// Evolve overlay and push toast (unchanged)
-void ui_show_evolve_overlay(bool visible);
-void ui_show_push_toast(bool success);
+lv_obj_t* ui_minigame_parent();

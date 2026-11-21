@@ -1,518 +1,677 @@
 // =============================================================================
-// Tamagrotchi — Entry point
-// Waveshare ESP32-S3-Touch-LCD-1.69 (ST7789V2, QMI8658C, PCF85063A)
+// ZooGotchi S3 — Main Application Entry Point
+// Waveshare ESP32-S3-Touch-LCD-1.69 (ST7789V2, CST816T, QMI8658C, PCF85063A)
 // =============================================================================
 #include <Arduino.h>
-#include <WiFi.h>
-#include <time.h>
+#include <LittleFS.h>
+#include <stdio.h>
+#include <string.h>
 
 #include "config.h"
 #include "config_mgr/config_manager.h"
+#include "hal/i2c_lock.h"
 #include "display/lvgl_port.h"
 #include "display/ui_screens.h"
+#include "input/touch_cst816.h"
 #include "input/buttons.h"
 #include "buzzer/buzzer.h"
-#include "game/pet_state.h"
-#include "game/game_engine.h"
-#include "game/evolution.h"
-#include "game/actions.h"
-#include "game/mini_game_metric_catcher.h"
-#include "sprites/sprite_engine.h"
-#include "sprites/grot_frames.h"
-#include "wifi/wifi_manager.h"
-#include "telemetry/otlp_writer.h"
 #include "imu/imu_driver.h"
 #include "rtc/rtc_driver.h"
 #include "power/battery.h"
+#include "power/sleep_controller.h"
+#include "zoo/species_registry.h"
+#include "zoo/karimono_genetics.h"
+#include "zoo/zoo_engine.h"
+#include "game/minigames/forage_catch.h"
+#include "game/minigames/habitat_care.h"
+#include "game/minigames/rhythm_chirp.h"
+#include "learn/study_decks.h"
+#include "learn/study_engine.h"
+#include "learn/focus_timer.h"
+#include "ai/personality_memory.h"
+#include "ai/rag_retriever.h"
+#include "ai/micro_llm_ple.h"
+#include "net/web_companion.h"
 
-// =============================================================================
-// Globals
-// =============================================================================
-static PetState  g_pet;
-static AppConfig g_cfg;
-static uint8_t   _battery_pct = 100;   // refreshed on telemetry sample tick (16 ADC reads)
+static AppConfig   g_cfg;
+static ZooPetState g_pet;
+static PetMemory   g_mem;
+static uint8_t     g_bat_pct        = 100;
+static int8_t      g_active_game    = -1;
+static uint32_t    g_last_game_ms   = 0;
+static uint32_t    g_last_imu_ms    = 0;
+static uint32_t    g_last_save_s    = 0;
+static uint32_t    g_last_bat_ms    = 0;
+static bool        g_memorial_shown = false;
 
-// =============================================================================
-// UI state machine
-// =============================================================================
-enum class UiMode : uint8_t {
-    IDLE,        // pet visible, no icon selected
-    NAVIGATING,  // icon bar active, A/C scroll, B select
-    SUB_STATUS,  // stats overlay, auto-close 4s or B
-    SUB_FEED,    // food choice overlay, A/C toggle, B execute
-    SUB_LIGHTS,  // lights confirm overlay, B=toggle A=cancel
-    SUB_DISMISS, // generic text overlay, any key or 2s auto-dismiss
-    MINI_GAME,   // metric catcher mini-game running
-};
+// Active quiz round state
+static constexpr uint8_t QUIZ_ROUND_LEN = 5;
+static StudyDeckId g_quiz_deck      = StudyDeckId::DSA_PATTERNS;
+static uint8_t     g_quiz_q_num     = 0;
+static uint8_t     g_quiz_card_idx  = 0;
+static int16_t     g_quiz_prev_idx  = -1;
+static StudyCard   g_quiz_card      = {};
+static bool        g_quiz_answered  = false;
+static uint32_t    g_quiz_adv_at_ms = 0;
+static uint8_t     g_quiz_correct   = 0;
+static uint16_t    g_quiz_coins     = 0;
+static char        g_quiz_last_term[28] = {};
 
-static UiMode   g_ui_mode      = UiMode::IDLE;
-static MenuItem g_menu_item    = MenuItem::STATUS;
-static int      g_feed_choice  = 0;           // 0=Microchip, 1=SIN-wave
-static uint32_t g_sub_enter_ms = 0;
-static bool     g_sprite_test  = false;       // true while B-cycle test is active
+static volatile bool g_speech_pending = false;
+static char          g_speech_buf[140] = {};
 
-// =============================================================================
-// game_log() / game_trace() — strong overrides for the __attribute__((weak))
-// stubs in game_engine.cpp.  Routes telemetry to Serial + OTLP buffers.
-// =============================================================================
-void game_log(uint8_t level, const char* event, const char* msg) {
-    Serial.printf("[%s] %s\n", event, msg);
-    otlp_log(level, event, msg);
+static void post_speech_from_any_core(const char* text) {
+    if (!text || !text[0]) return;
+    strlcpy(g_speech_buf, text, sizeof(g_speech_buf));
+    g_speech_pending = true;
 }
 
-void game_trace(const char* name, const char* body, uint32_t dur_ms) {
-    otlp_trace(name, body, dur_ms);
+static void on_brain_reply(const char* partial, bool finished, void* /*ctx*/) {
+    if (finished && partial && partial[0]) {
+        post_speech_from_any_core(partial);
+    }
+}
+
+static void ask_pet_brain(const char* prompt) {
+    pet_state_lock();
+    ZooPetState spet = g_pet;
+    PetMemory   smem = g_mem;
+    pet_state_unlock();
+
+    uint8_t hr = rtc_get_hour(g_cfg.tz_offset_min);
+    pet_brain_ask_async(&spet, &smem, hr, g_bat_pct, prompt, true, on_brain_reply, nullptr);
+}
+
+static void save_all_atomic() {
+    pet_state_lock();
+    zoo_save_state(&g_pet);
+    memory_save(&g_mem);
+    study_save();
+    pet_state_unlock();
+}
+
+static void refresh_settings_ui() {
+    char ssid[64] = {}, url[64] = {};
+    web_companion_get_ssid(ssid, sizeof(ssid));
+    web_companion_get_url(url, sizeof(url));
+    ui_refresh_settings(&g_cfg, web_companion_is_active(), ssid, url);
 }
 
 // =============================================================================
-// setup()
+// Quiz Helpers
+// =============================================================================
+static void quiz_load_next_question() {
+    if (g_quiz_q_num >= QUIZ_ROUND_LEN) {
+        pet_state_lock();
+        zoo_apply_study_reward(&g_pet, g_quiz_coins, (uint8_t)(12 + g_quiz_correct * 4),
+                               (uint8_t)(2 + g_quiz_correct), 3);
+        if (g_quiz_last_term[0]) {
+            strlcpy(g_mem.lastLearned, g_quiz_last_term, sizeof(g_mem.lastLearned));
+        }
+        char ev[64];
+        snprintf(ev, sizeof(ev), "Quiz %s: %u/%u (+%uc)",
+                 study_deck_name(g_quiz_deck), (unsigned)g_quiz_correct,
+                 (unsigned)QUIZ_ROUND_LEN, (unsigned)g_quiz_coins);
+        strlcpy(g_mem.lastAction, "studied flashcards", sizeof(g_mem.lastAction));
+        memory_record_event(&g_mem, ev, rtc_get_epoch());
+        zoo_save_state(&g_pet);
+        pet_state_unlock();
+
+        buzzer_play_async(MELODY_HAPPY, MELODY_HAPPY_LEN);
+        ui_show_screen(UiScreen::HOME);
+        ui_show_speech_bubble(ev, 5000);
+        return;
+    }
+
+    int64_t ep = (int64_t)rtc_get_epoch();
+    uint8_t cnt = study_deck_card_count(g_quiz_deck);
+    for (int tries = 0; tries < 4; tries++) {
+        if (!study_pick_next_card(g_quiz_deck, ep, &g_quiz_card_idx)) break;
+        if (cnt <= 1 || (int16_t)g_quiz_card_idx != g_quiz_prev_idx) break;
+    }
+    g_quiz_prev_idx = g_quiz_card_idx;
+    if (!study_deck_get_card(g_quiz_deck, g_quiz_card_idx, &g_quiz_card)) {
+        ui_show_screen(UiScreen::STUDY_HUB);
+        return;
+    }
+    g_quiz_q_num++;
+    g_quiz_answered  = false;
+    g_quiz_adv_at_ms = 0;
+    ui_show_quiz_card(study_deck_name(g_quiz_deck), g_quiz_q_num, QUIZ_ROUND_LEN, &g_quiz_card);
+}
+
+// =============================================================================
+// UI Callbacks
+// =============================================================================
+static void cb_adopt_species(uint8_t species_id) {
+    int64_t now_ep = (int64_t)rtc_get_epoch();
+    pet_state_lock();
+    zoo_adopt_species(&g_pet, species_id, nullptr, now_ep);
+    g_memorial_shown = false;
+    const SpeciesProfile& sp = species_get(species_id);
+    char ev[64];
+    snprintf(ev, sizeof(ev), "Welcomed %s!", sp.name);
+    strlcpy(g_mem.lastAction, "hatched", sizeof(g_mem.lastAction));
+    memory_record_event(&g_mem, ev, now_ep);
+    zoo_save_state(&g_pet);
+    pet_state_unlock();
+
+    buzzer_play_async(MELODY_EVOLVE, MELODY_EVOLVE_LEN);
+    ui_show_screen(UiScreen::HOME);
+    ask_pet_brain("hello");
+}
+
+static void cb_zoo_action(ZooAction act) {
+    char fb[64] = {};
+    bool ok = false;
+    pet_state_lock();
+    ok = zoo_perform_action(&g_pet, act, fb, sizeof(fb));
+    if (ok) {
+        if (act == ZooAction::FEED_PRIMARY || act == ZooAction::FEED_TREAT) g_mem.totalMeals++;
+        if (act == ZooAction::PET_STROKE) { g_mem.totalPets++; g_pet.lastPetHeartMs = millis(); }
+        strlcpy(g_mem.lastAction, fb, sizeof(g_mem.lastAction));
+        memory_record_event(&g_mem, fb, rtc_get_epoch());
+        zoo_save_state(&g_pet);
+    }
+    AnimalCategory cat = g_pet.category;
+    pet_state_unlock();
+
+    if (ok) {
+        if (act == ZooAction::VET_MEDICINE) buzzer_play_async(MELODY_MEDICINE, MELODY_MEDICINE_LEN);
+        else if (act == ZooAction::PET_STROKE) buzzer_play_category_emote((uint8_t)cat);
+        else buzzer_play_async(MELODY_FEED, MELODY_FEED_LEN);
+        ui_show_speech_bubble(fb, 3000);
+        if (act == ZooAction::FEED_PRIMARY || act == ZooAction::PET_STROKE) {
+            ask_pet_brain(act == ZooAction::PET_STROKE ? "pet" : "eat");
+        }
+    } else if (fb[0]) {
+        ui_show_speech_bubble(fb, 2500);
+    }
+}
+
+static void cb_ask_pet_talk() {
+    pet_state_lock();
+    AnimalCategory cat = g_pet.category;
+    pet_state_unlock();
+    buzzer_play_category_emote((uint8_t)cat);
+    ask_pet_brain("How are you feeling?");
+}
+
+static void cb_buy_use_shop(uint8_t item_idx) {
+    char msg[64] = {};
+    bool ok = false;
+    pet_state_lock();
+    ok = zoo_shop_buy_or_use(&g_pet, item_idx, msg, sizeof(msg));
+    if (ok) zoo_save_state(&g_pet);
+    pet_state_unlock();
+
+    buzzer_play_async(ok ? MELODY_HAPPY : MELODY_SICK, ok ? MELODY_HAPPY_LEN : 1);
+    ui_show_screen(UiScreen::HOME);
+    ui_show_speech_bubble(msg, 3500);
+}
+
+static void cb_breed_plaza() {
+    pet_state_lock();
+    if (!zoo_karimono_can_breed(&g_pet)) {
+        bool is_k = species_get(g_pet.speciesId).isKarimono;
+        pet_state_unlock();
+        if (!is_k) {
+            ui_show_screen(UiScreen::ADOPT_CAT);
+        } else {
+            ui_show_screen(UiScreen::HOME);
+            ui_show_speech_bubble("Raise Karimono to Adult first!", 3000);
+        }
+        return;
+    }
+    KarimonoGenome partner = karimono_generate_plaza_partner(g_pet.genome.generation, esp_random());
+    bool ok = zoo_karimono_crossbreed(&g_pet, partner, "Plaza Spirit", nullptr,
+                                      (int64_t)rtc_get_epoch(), esp_random());
+    char msg[64] = {};
+    if (ok) {
+        snprintf(msg, sizeof(msg), "Hatched Gen %u: %s!", (unsigned)g_pet.genome.generation, g_pet.petName);
+        memory_record_event(&g_mem, msg, rtc_get_epoch());
+        zoo_save_state(&g_pet);
+    }
+    pet_state_unlock();
+
+    if (ok) {
+        buzzer_play_async(MELODY_BREED, MELODY_BREED_LEN);
+        ui_show_screen(UiScreen::HOME);
+        ui_show_speech_bubble(msg, 5000);
+    }
+}
+
+static void cb_start_minigame(uint8_t game_idx) {
+    pet_state_lock();
+    const SpeciesProfile& sp = species_get(g_pet.speciesId);
+    pet_state_unlock();
+
+    sleep_boost_cpu(true);
+    g_active_game = (int8_t)game_idx;
+    ui_show_screen(UiScreen::MINIGAME);
+    lv_obj_t* root = ui_minigame_parent();
+
+    if (game_idx == 0) forage_catch_start(root, sp.biomeBgHex, sp.biomeAccentHex, sp.primaryFood);
+    else if (game_idx == 1) habitat_care_start(root, sp.biomeBgHex, sp.biomeAccentHex, sp.envCareLabel);
+    else rhythm_chirp_start(root, sp.biomeBgHex);
+}
+
+static void stop_active_minigame(const MiniGameResult* res) {
+    if (g_active_game < 0) return;
+    forage_catch_stop();
+    habitat_care_stop();
+    rhythm_chirp_stop();
+    g_active_game = -1;
+    sleep_boost_cpu(false);
+
+    if (res && res->finished) {
+        pet_state_lock();
+        zoo_apply_minigame_result(&g_pet, res->score, res->coinsEarned, res->braveryDelta);
+        g_mem.totalGames++;
+        strlcpy(g_mem.lastAction, "played a mini-game", sizeof(g_mem.lastAction));
+        memory_record_event(&g_mem, res->summary, rtc_get_epoch());
+        zoo_save_state(&g_pet);
+        pet_state_unlock();
+
+        buzzer_play_async(MELODY_HAPPY, MELODY_HAPPY_LEN);
+        ui_show_screen(UiScreen::HOME);
+        ui_show_speech_bubble(res->summary, 4000);
+    } else {
+        ui_show_screen(UiScreen::HOME);
+    }
+}
+
+static void cb_toggle_wifi() {
+    web_companion_toggle();
+    refresh_settings_ui();
+}
+
+static void cb_toggle_mute() {
+    g_cfg.buzzer_enabled = !g_cfg.buzzer_enabled;
+    buzzer_set_muted(!g_cfg.buzzer_enabled);
+    config_manager_save(&g_cfg);
+    refresh_settings_ui();
+}
+
+static void cb_toggle_demo() {
+    g_cfg.demo_speed = !g_cfg.demo_speed;
+    config_manager_save(&g_cfg);
+    refresh_settings_ui();
+}
+
+static void cb_toggle_bgr() {
+    g_cfg.bgr_order = !g_cfg.bgr_order;
+    gfx.setBgrOrder(g_cfg.bgr_order);
+    config_manager_save(&g_cfg);
+    refresh_settings_ui();
+}
+
+static void cb_adjust_clock_hour(int8_t delta_hr) {
+    time_t cur = rtc_get_epoch();
+    rtc_set_epoch(cur + (time_t)delta_hr * 3600L);
+}
+
+static void cb_open_study_hub() {
+    ui_refresh_study_hub((int64_t)rtc_get_epoch());
+    ui_show_screen(UiScreen::STUDY_HUB);
+}
+
+static void cb_start_quiz_deck(uint8_t deck_id) {
+    if (deck_id >= (uint8_t)StudyDeckId::COUNT) return;
+    StudyDeckId did = (StudyDeckId)deck_id;
+    if (study_deck_card_count(did) == 0) {
+        ui_show_screen(UiScreen::HOME);
+        ui_show_speech_bubble("Upload Custom Deck in Wi-Fi Study tab!", 4000);
+        return;
+    }
+    g_quiz_deck         = did;
+    g_quiz_q_num        = 0;
+    g_quiz_prev_idx     = -1;
+    g_quiz_correct      = 0;
+    g_quiz_coins        = 0;
+    g_quiz_last_term[0] = '\0';
+    ui_show_screen(UiScreen::QUIZ);
+    quiz_load_next_question();
+}
+
+static void cb_quiz_answer(uint8_t choice_idx) {
+    if (g_quiz_answered) return;
+    g_quiz_answered = true;
+    bool ok = (choice_idx == g_quiz_card.correctIdx);
+    if (ok) {
+        g_quiz_correct++;
+        strlcpy(g_quiz_last_term, g_quiz_card.termTag ? g_quiz_card.termTag : "", sizeof(g_quiz_last_term));
+        buzzer_play_async(MELODY_FEED, MELODY_FEED_LEN);
+    } else {
+        buzzer_play_async(MELODY_SICK, 1);
+    }
+    g_quiz_coins += study_record_answer(g_quiz_deck, g_quiz_card_idx, ok, (int64_t)rtc_get_epoch());
+    ui_show_quiz_feedback(choice_idx, g_quiz_card.correctIdx, g_quiz_card.takeaway);
+    g_quiz_adv_at_ms = millis() + 2400UL;
+}
+
+static void cb_quiz_next() {
+    if (!g_quiz_answered) return;
+    quiz_load_next_question();
+}
+
+static void cb_open_focus() {
+    uint32_t now = millis();
+    pet_state_lock();
+    char pname[16];
+    strlcpy(pname, g_pet.petName, sizeof(pname));
+    pet_state_unlock();
+    ui_refresh_focus(focus_timer_is_active(), focus_timer_duration_min(),
+                     focus_timer_remaining_sec(now), focus_timer_progress_pct(now),
+                     g_cfg.demo_speed, pname);
+    ui_show_screen(UiScreen::FOCUS);
+}
+
+static void cb_start_focus(uint16_t minutes) {
+    uint32_t now = millis();
+    focus_timer_start(minutes, now);
+    buzzer_play_async(MELODY_BOOT, 2);
+    cb_open_focus();
+}
+
+static void cb_stop_focus() {
+    focus_timer_stop();
+    cb_open_focus();
+}
+
+// =============================================================================
+// setup() & loop()
 // =============================================================================
 void setup() {
-    // 0. CPU frequency — 80 MHz is sufficient for a 1 Hz game loop.
-    //    APB clock stays at 80 MHz at this setting so SPI/I2C are unaffected.
-    setCpuFrequencyMhz(80);
-
-    // 0b. Power latch — GPIO41 HIGH keeps the board on; GPIO40 is a sense input
-    pinMode(PIN_SYS_EN,  OUTPUT);
-    digitalWrite(PIN_SYS_EN,  HIGH);
-    pinMode(PIN_SYS_OUT, INPUT);   // power sense — do NOT drive this pin
+    pinMode(PIN_SYS_EN, OUTPUT);
+    digitalWrite(PIN_SYS_EN, HIGH);
+    pinMode(PIN_SYS_OUT, INPUT);
 
     Serial.begin(115200);
-    // ESP32-S3 USB CDC needs time to re-enumerate after the boot reset.
-    // Wait up to 2 s for the host to connect; fall through anyway so the
-    // device doesn't hang when no PC is attached.
-    { uint32_t t = millis(); while (!Serial && (millis() - t) < 2000) delay(10); }
-    delay(100);
-    Serial.println("\n[main] === Tamagrotchi boot ===");
+    { uint32_t t = millis(); while (!Serial && (millis() - t) < 1200) delay(10); }
+    Serial.println("\n=== ZooGotchi S3 Boot ===");
 
-    // 1. Load runtime config from LittleFS /config.json ----------------------
     config_manager_load(&g_cfg);
     config_manager_print(&g_cfg);
 
-    // 2. Display + LVGL -------------------------------------------------------
-    lvgl_port_init(g_cfg.bgr_order);   // init LovyanGFX + LVGL
-    ui_screens_init();         // build all LVGL screens (also inits sprite engine)
-    ui_show_game();            // activate main game screen
+    i2c_bus_init();
+    lvgl_port_init(g_cfg.bgr_order);
+    lvgl_port_set_brightness(g_cfg.brightness);
 
-    // 3. Input ----------------------------------------------------------------
+    touch_cst816_init();
+    touch_cst816_register_lvgl();
     buttons_init();
 
-    // 4. Audio ----------------------------------------------------------------
     buzzer_init();
     buzzer_set_muted(!g_cfg.buzzer_enabled);
-    if (g_cfg.flash_alerts)
-        buzzer_set_play_cb([]() { display_alert_flash(2); });
-    buzzer_play_async(MELODY_BOOT, MELODY_BOOT_LEN);
+    if (g_cfg.flash_alerts) buzzer_set_play_cb([]() { display_alert_flash(2); });
 
-    // 5. IMU + RTC (Wire.begin called inside imu_driver_init) -----------------
     imu_driver_init();
     rtc_driver_init();
     battery_init();
-    _battery_pct = battery_get_percent();   // prime the header indicator
+    sleep_controller_init(g_cfg.brightness);
+    study_init();
 
-    // 6. Pet state + game engine ----------------------------------------------
-    pet_state_init(&g_pet);
-    game_engine_init(&g_pet);
+    float bat_v = battery_read_voltage();
+    g_bat_pct   = battery_v_to_percent(bat_v);
 
-    // 7. WiFi (non-blocking) + telemetry writer -------------------------------
-    wifi_manager_init(g_cfg.wifi_ssid, g_cfg.wifi_password);
-    otlp_writer_init(g_cfg.otlp_base, g_cfg.auth_b64, g_cfg.device_id);
-    otlp_writer_start_task();   // background push task on Core 0
+    pet_state_lock();
+    bool has_save = zoo_load_state(&g_pet);
+    memory_load(&g_mem);
+    if (has_save && g_pet.hasActivePet && !g_pet.isDead) {
+        ZooTickEvents cev = zoo_catchup_elapsed(&g_pet, (int64_t)rtc_get_epoch(),
+                                                g_cfg.tz_offset_min, g_cfg.demo_speed);
+        if (cev.died) {
+            g_memorial_shown = false;
+        }
+        zoo_save_state(&g_pet);
+    }
+    pet_state_unlock();
 
-    // 8. Boot log (buffered; flushed on first successful WiFi push) -----------
-    char boot_msg[80];
-    snprintf(boot_msg, sizeof(boot_msg),
-             "stage=%s | firmware=1.0.0", life_stage_name(g_pet.stage));
-    game_log(9 /*INFO*/, "boot", boot_msg);
+    UiCallbacks cbs = {
+        cb_adopt_species, cb_zoo_action, cb_ask_pet_talk, cb_buy_use_shop,
+        cb_breed_plaza, cb_start_minigame, cb_toggle_wifi, cb_toggle_mute,
+        cb_toggle_demo, cb_toggle_bgr, cb_adjust_clock_hour,
+        cb_open_study_hub, cb_start_quiz_deck, cb_quiz_answer, cb_quiz_next,
+        cb_open_focus, cb_start_focus, cb_stop_focus
+    };
+    ui_screens_init(cbs);
 
-    Serial.println("[main] Setup complete\n");
+    if (!has_save || !g_pet.hasActivePet) {
+        ui_show_screen(UiScreen::ADOPT_CAT);
+    } else if (g_pet.isDead) {
+        ui_refresh_memorial(&g_pet);
+        ui_show_screen(UiScreen::MEMORIAL);
+        g_memorial_shown = true;
+    } else {
+        ui_show_screen(UiScreen::HOME);
+    }
+
+    rag_init();
+    pet_brain_init();
+    web_companion_init(&g_cfg, &g_pet, &g_mem, post_speech_from_any_core);
+
+    buzzer_play_async(MELODY_BOOT, MELODY_BOOT_LEN);
+    g_last_game_ms = millis();
+    g_last_imu_ms  = millis();
+    g_last_bat_ms  = millis();
 }
-
-// =============================================================================
-// loop()
-// =============================================================================
-enum class TelemetryPhase : uint8_t { WAKING, PUSHING, SLEEPING, ASLEEP };
-static TelemetryPhase _telem_phase   = TelemetryPhase::WAKING;  // start connected for NTP
-static uint32_t _last_push_ms        = 0;
-static uint32_t _last_sample_ms      = 0;
-static uint32_t _wake_start_ms       = 0;
-static bool     _rtc_synced          = false;   // NTP → RTC written once
-static bool     _dead_shown          = false;   // death screen shown once
-static bool     _was_sleeping        = false;   // tracks last pet sleep state for backlight
 
 void loop() {
     uint32_t now = millis();
 
-    // 1. LVGL heartbeat -------------------------------------------------------
+    touch_cst816_update();
+    buttons_update();
+    buzzer_update();
+    web_companion_update();
     lvgl_port_tick();
 
-    // 2. Advance async buzzer melody ------------------------------------------
-    buzzer_update();
-
-    // 3. Debounce buttons, fill event ring buffer ------------------------------
-    buttons_update();
-
-    // 4. IMU read ~10 Hz -------------------------------------------------------
-    static uint32_t _imu_ms = 0;
-    if (now - _imu_ms >= 100) {
-        _imu_ms = now;
-        imu_driver_update();
-    }
-
-    // 5. Non-blocking WiFi FSM ------------------------------------------------
-    wifi_manager_update();
-
-    // 6. Sync NTP time back to hardware RTC (once, after SNTP settles) --------
-    if (!_rtc_synced) {
-        time_t t = time(nullptr);
-        if (t > 1000000000L) {
-            rtc_driver_sync_from_ntp(t);
-            _rtc_synced = true;
+    if (g_speech_pending) {
+        g_speech_pending = false;
+        if (ui_current_screen() == UiScreen::HOME) {
+            ui_show_speech_bubble(g_speech_buf, 6500);
         }
     }
 
-    // 7. Game tick (internally rate-limited to GAME_TICK_MS) ------------------
-    game_engine_update(&g_pet);
-
-    // 8. UI state machine — icon menu navigation + action dispatch -------------
-    {
-        ButtonEvent evt = buttons_get_event();
-
-        // Stop the mini-game immediately if the pet dies mid-game
-        if (pet_is_dead(&g_pet) && g_ui_mode == UiMode::MINI_GAME) {
-            metric_catcher_stop();
-            g_ui_mode = UiMode::IDLE;
-            ui_menu_set_selected(MenuItem::MENU_COUNT);
-            ui_set_hints("", "", "");
-        }
-
-        // Dead screen: B press restarts the pet
-        if (pet_is_dead(&g_pet)) {
-            if (evt == ButtonEvent::B_PRESS) {
-                pet_state_init(&g_pet);
-                game_engine_init(&g_pet);
-                _dead_shown = false;
-                ui_show_game();
-                ui_hide_overlay();
-                g_ui_mode = UiMode::IDLE;
-                ui_menu_set_selected(MenuItem::MENU_COUNT);
-                ui_set_hints("", "", "");
-            }
-        } else {
-            switch (g_ui_mode) {
-
-            // ------------------------------------------------------------------
-            case UiMode::IDLE:
-                // A or C wakes the icon bar; exit sprite test mode
-                if (evt == ButtonEvent::A_PRESS || evt == ButtonEvent::C_PRESS) {
-                    g_sprite_test = false;
-                    g_ui_mode = UiMode::NAVIGATING;
-                    ui_menu_set_selected(g_menu_item);
-                    ui_set_hints("[A] Prev", "[B] Select", "[C] Next");
-                }
-                // B cycles through sprite animation states (dev testing)
-                if (evt == ButtonEvent::B_PRESS) {
-                    g_sprite_test = true;
-                    sprite_engine_test_next();
-                }
-                break;
-
-            // ------------------------------------------------------------------
-            case UiMode::NAVIGATING: {
-                const int n = (int)MenuItem::MENU_COUNT;
-                if (evt == ButtonEvent::A_PRESS) {
-                    g_menu_item = (MenuItem)(((int)g_menu_item - 1 + n) % n);
-                    ui_menu_set_selected(g_menu_item);
-                } else if (evt == ButtonEvent::C_PRESS) {
-                    g_menu_item = (MenuItem)(((int)g_menu_item + 1) % n);
-                    ui_menu_set_selected(g_menu_item);
-                } else if (evt == ButtonEvent::B_PRESS) {
-                    // Activate selected icon
-                    switch (g_menu_item) {
-                    case MenuItem::STATUS:
-                        g_ui_mode      = UiMode::SUB_STATUS;
-                        g_sub_enter_ms = now;
-                        ui_show_overlay_status(&g_pet, battery_read_voltage(),
-                                               otlp_get_game_id());
-                        ui_set_hints("", "[B] Close", "");
-                        break;
-                    case MenuItem::FEED:
-                        g_ui_mode     = UiMode::SUB_FEED;
-                        g_feed_choice = 0;
-                        ui_show_overlay_feed(g_feed_choice);
-                        ui_set_hints("[A] Prev", "[B] Feed!", "[C] Next");
-                        break;
-                    case MenuItem::CLEAN:
-                        if (g_pet.hasP1) {
-                            otlp_trace_begin("user.clean", "action=clean", 600);
-                            action_clean(&g_pet);
-                            otlp_trace_end();
-                            g_ui_mode      = UiMode::SUB_DISMISS;
-                            g_sub_enter_ms = now;
-                            ui_show_overlay_text("P1 Resolved!\n\nHealth +10");
-                        } else {
-                            g_ui_mode      = UiMode::SUB_DISMISS;
-                            g_sub_enter_ms = now;
-                            ui_show_overlay_text("Nothing to clean\n\nData stream is clear");
-                        }
-                        ui_set_hints("", "[B] OK", "");
-                        break;
-                    case MenuItem::GAME:
-                        metric_catcher_start(&g_pet);
-                        g_ui_mode = UiMode::MINI_GAME;
-                        ui_menu_set_selected(MenuItem::MENU_COUNT);
-                        ui_set_hints("[A] Left", "[B] Quit", "[C] Right");
-                        break;
-                    case MenuItem::LIGHTS:
-                        g_ui_mode      = UiMode::SUB_LIGHTS;
-                        g_sub_enter_ms = now;
-                        ui_show_overlay_text(g_pet.isSleeping
-                            ? "Wake Grot up?\n\n[B] Wake  [A] Cancel"
-                            : "Put Grot to sleep?\n\n[B] Sleep  [A] Cancel");
-                        ui_set_hints("[A] Cancel", "[B] Confirm", "");
-                        break;
-                    case MenuItem::MEDICINE: {
-                        bool was_sick = (g_pet.status == PetStatus::SICK);
-                        otlp_trace_begin("user.medicine", "action=medicine", 600);
-                        action_medicine(&g_pet);
-                        otlp_trace_end();
-                        g_ui_mode      = UiMode::SUB_DISMISS;
-                        g_sub_enter_ms = now;
-                        ui_show_overlay_text(was_sick
-                            ? "Medicine given!\nHealth restored"
-                            : "Medicine given");
-                        ui_set_hints("", "[B] OK", "");
-                        break;
-                    }
-                    default: break;
-                    }
-                } else if (evt == ButtonEvent::B_LONG) {
-                    // Long-press B cancels navigation
-                    g_ui_mode = UiMode::IDLE;
-                    ui_menu_set_selected(MenuItem::MENU_COUNT);
-                    ui_hide_overlay();
-                    ui_set_hints("", "", "");
-                }
-                break;
-            }
-
-            // ------------------------------------------------------------------
-            case UiMode::SUB_STATUS:
-                // Auto-close after 4s or on B press
-                if (evt == ButtonEvent::B_PRESS ||
-                    (now - g_sub_enter_ms) >= 4000UL) {
-                    ui_hide_overlay();
-                    g_ui_mode = UiMode::IDLE;
-                    ui_menu_set_selected(MenuItem::MENU_COUNT);
-                    ui_set_hints("", "", "");
-                }
-                break;
-
-            // ------------------------------------------------------------------
-            case UiMode::SUB_FEED:
-                if (evt == ButtonEvent::A_PRESS || evt == ButtonEvent::C_PRESS) {
-                    g_feed_choice ^= 1;  // toggle 0↔1
-                    ui_show_overlay_feed(g_feed_choice);
-                } else if (evt == ButtonEvent::B_PRESS) {
-                    FoodType food = (g_feed_choice == 0)
-                                  ? FoodType::MICROCHIP
-                                  : FoodType::SIN_WAVE;
-                    otlp_trace_begin("user.feed",
-                        g_feed_choice == 0 ? "food=microchip" : "food=sin_wave", 600);
-                    action_feed(&g_pet, food);
-                    otlp_trace_end();
-                    ui_hide_overlay();
-                    g_ui_mode = UiMode::IDLE;
-                    ui_menu_set_selected(MenuItem::MENU_COUNT);
-                    ui_set_hints("", "", "");
-                } else if (evt == ButtonEvent::B_LONG) {
-                    ui_hide_overlay();
-                    g_ui_mode = UiMode::IDLE;
-                    ui_menu_set_selected(MenuItem::MENU_COUNT);
-                    ui_set_hints("", "", "");
-                }
-                break;
-
-            // ------------------------------------------------------------------
-            case UiMode::SUB_LIGHTS:
-                if (evt == ButtonEvent::B_PRESS) {
-                    if (g_pet.isSleeping) {
-                        action_wake(&g_pet, rtc_get_hour());
-                    } else {
-                        g_pet.isSleeping = true;
-                        g_pet.status     = PetStatus::SLEEPING;
-                        game_log(9, "sleeping", "manual sleep via lights menu");
-                    }
-                    ui_hide_overlay();
-                    g_ui_mode = UiMode::IDLE;
-                    ui_menu_set_selected(MenuItem::MENU_COUNT);
-                    ui_set_hints("", "", "");
-                } else if (evt == ButtonEvent::A_PRESS || evt == ButtonEvent::B_LONG) {
-                    ui_hide_overlay();
-                    g_ui_mode = UiMode::IDLE;
-                    ui_menu_set_selected(MenuItem::MENU_COUNT);
-                    ui_set_hints("", "", "");
-                }
-                break;
-
-            // ------------------------------------------------------------------
-            case UiMode::SUB_DISMISS:
-                // Any button press or 2s auto-dismiss
-                if (evt != ButtonEvent::NONE ||
-                    (now - g_sub_enter_ms) >= 2000UL) {
-                    ui_hide_overlay();
-                    g_ui_mode = UiMode::IDLE;
-                    ui_menu_set_selected(MenuItem::MENU_COUNT);
-                    ui_set_hints("", "", "");
-                }
-                break;
-
-            // ------------------------------------------------------------------
-            case UiMode::MINI_GAME:
-                metric_catcher_handle_input(evt);
-                if (!metric_catcher_is_running()) {
-                    g_ui_mode = UiMode::IDLE;
-                    ui_menu_set_selected(MenuItem::MENU_COUNT);
-                    ui_set_hints("", "", "");
-                }
-                break;
-            }
-        }
+    if (web_companion_consume_dirty()) {
+        refresh_settings_ui();
     }
 
-    // 9. Shake interactions ---------------------------------------------------
-    ShakeLevel shake = imu_get_shake();
-    if (shake != ShakeLevel::NONE && !pet_is_dead(&g_pet)) {
-        float mag = imu_get_accel_mag();
-
-        if (shake == ShakeLevel::HARD) {
-            // Hard shake → dizzy, lose 5 happiness
-            char shake_body[48];
-            snprintf(shake_body, sizeof(shake_body), "level=hard | accel_mag=%.2f", (double)mag);
-            otlp_trace_begin("sensor.shake", shake_body, 2000);
-            action_dizzy(&g_pet, mag);
-            otlp_trace_end();
-        } else {
-            // Gentle shake
-            if (g_pet.isSleeping) {
-                // Wake early → care mistake if before wakeHour
-                action_wake(&g_pet, rtc_get_hour());
-            } else {
-                char msg[48];
-                snprintf(msg, sizeof(msg),
-                         "accel_mag=%.2f | action=play", (double)mag);
-                game_log(9, "shake_play", msg);
-                char shake_body[48];
-                snprintf(shake_body, sizeof(shake_body), "level=gentle | accel_mag=%.2f", (double)mag);
-                otlp_trace_begin("sensor.shake", shake_body, 1000);
-                game_trace("pet.shake_play", msg, 0);
-                action_play(&g_pet);
-                otlp_trace_end();
-            }
-        }
+    // Quiz feedback auto-advance
+    if (ui_current_screen() == UiScreen::QUIZ && g_quiz_answered &&
+        g_quiz_adv_at_ms > 0 && now >= g_quiz_adv_at_ms) {
+        g_quiz_adv_at_ms = 0;
+        quiz_load_next_question();
     }
 
-    // 10. Evolution overlay ---------------------------------------------------
-    if (g_pet.evolveReady &&
-        g_pet.status != PetStatus::EVOLVING &&
-        g_pet.status != PetStatus::DEAD) {
-        g_pet.status        = PetStatus::EVOLVING;
-        g_pet.statusStartMs = now;
-        ui_show_evolve_overlay(true);
+    // Focus Study Timer completion check
+    if (focus_timer_check_complete(now)) {
+        sleep_controller_mark_activity();
+        uint16_t mins  = focus_timer_duration_min();
+        uint16_t coins = study_record_focus_session(mins, (int64_t)rtc_get_epoch());
+        pet_state_lock();
+        zoo_apply_study_reward(&g_pet, coins, 20, 6, 4);
+        char ev[64];
+        snprintf(ev, sizeof(ev), "Focus %um done! (+%uc)", (unsigned)mins, (unsigned)coins);
+        strlcpy(g_mem.lastAction, "finished study sprint", sizeof(g_mem.lastAction));
+        memory_record_event(&g_mem, ev, rtc_get_epoch());
+        zoo_save_state(&g_pet);
+        pet_state_unlock();
+
         buzzer_play_async(MELODY_EVOLVE, MELODY_EVOLVE_LEN);
-    }
-    // Complete the transition after the 3-second animation
-    if (g_pet.status == PetStatus::EVOLVING &&
-        (now - g_pet.statusStartMs) >= 3000UL) {
-        ui_show_evolve_overlay(false);
-        char evo_body[32];
-        snprintf(evo_body, sizeof(evo_body), "from=%s", life_stage_name(g_pet.stage));
-        otlp_trace_begin("lifecycle.evolve", evo_body, 3000);
-        evolution_advance(&g_pet);   // advances stage, computes quality, clears evolveReady
-        otlp_trace_end();
+        ui_show_screen(UiScreen::HOME);
+        ui_show_speech_bubble(ev, 5500);
     }
 
-    // 11. Death screen (shown once) -------------------------------------------
-    if (pet_is_dead(&g_pet) && !_dead_shown) {
-        _dead_shown = true;
-        ui_show_dead();
-        buzzer_play_async(MELODY_DEAD, MELODY_DEAD_LEN);
-    }
-
-    // 12. Refresh UI ----------------------------------------------------------
-    ui_update_vitals(&g_pet);
-    ui_update_header(&g_pet, wifi_manager_is_connected(), _battery_pct);
-    // Skip sprite state update while the B-cycle dev test is active or the
-    // mini-game is running (both manage the sprite state themselves).
-    if (!g_sprite_test && g_ui_mode != UiMode::MINI_GAME) {
-        sprite_engine_set_state(g_pet.stage,
-                                game_engine_get_emotion(&g_pet),
-                                g_pet.quality);
-    }
-
-    // 12b. Sleep-aware backlight — dim when pet sleeps, restore on wake ------
-    if (g_pet.isSleeping != _was_sleeping) {
-        _was_sleeping = g_pet.isSleeping;
-        lvgl_port_set_brightness(g_pet.isSleeping ? LCD_BL_SLEEP : LCD_BL_NORMAL);
-    }
-
-    // 13. Telemetry: sample metrics into buffer every sample_interval_s -------
-    uint32_t sample_interval_ms = g_cfg.sample_interval_s * 1000UL;
-    if ((now - _last_sample_ms) >= sample_interval_ms) {
-        _last_sample_ms = now;
-        // Share a single ADC read between telemetry and the header indicator
-        float batt_v = battery_read_voltage();
-        _battery_pct = battery_v_to_percent(batt_v);
-        otlp_sample_metrics(&g_pet, imu_get_accel_mag(), batt_v);
-    }
-
-    // 13b. WiFi sleep/wake FSM — batch push once per push_interval_s ---------
-    uint32_t push_interval_ms = g_cfg.push_interval_s * 1000UL;
-
-    switch (_telem_phase) {
-
-    case TelemetryPhase::ASLEEP:
-        if ((now - _last_push_ms) >= push_interval_ms) {
-            _wake_start_ms = now;
-            wifi_manager_wake();
-            _telem_phase = TelemetryPhase::WAKING;
+    TouchEvent tev = touch_cst816_get_event();
+    if (tev.type != TouchEventType::NONE) {
+        sleep_controller_mark_activity();
+        if (g_active_game < 0 && ui_current_screen() == UiScreen::HOME) {
+            if (tev.type == TouchEventType::PET_STROKE) {
+                cb_zoo_action(ZooAction::PET_STROKE);
+            } else if (tev.type == TouchEventType::SWIPE_LEFT) {
+                ui_show_screen(UiScreen::JOURNAL);
+            } else if (tev.type == TouchEventType::SWIPE_RIGHT) {
+                ui_show_screen(UiScreen::CARE);
+            } else if (tev.type == TouchEventType::SWIPE_UP) {
+                cb_open_study_hub();
+            } else if (tev.type == TouchEventType::SWIPE_DOWN) {
+                refresh_settings_ui();
+                ui_show_screen(UiScreen::SETTINGS);
+            }
+        } else if (g_active_game >= 0 && tev.type == TouchEventType::SWIPE_DOWN) {
+            stop_active_minigame(nullptr);
         }
-        break;
-
-    case TelemetryPhase::WAKING:
-        if (wifi_manager_is_connected()) {
-            otlp_schedule_push(&g_pet, imu_get_accel_mag(), WiFi.RSSI(),
-                               battery_read_voltage());
-            _telem_phase = TelemetryPhase::PUSHING;
-        } else if ((now - _wake_start_ms) >= WIFI_WAKE_TIMEOUT_MS) {
-            // Failed to connect — skip push, sleep, retry next window
-            wifi_manager_sleep();
-            _last_push_ms = now;
-            _telem_phase  = TelemetryPhase::ASLEEP;
-            game_log(13, "wifi_wake_timeout", "skipping push");
-        }
-        break;
-
-    case TelemetryPhase::PUSHING:
-        if (otlp_push_complete()) {
-            ui_show_push_toast(otlp_last_push_ok());
-            _last_push_ms = now;
-            wifi_manager_sleep();
-            _telem_phase = TelemetryPhase::SLEEPING;
-        }
-        break;
-
-    case TelemetryPhase::SLEEPING:
-        // Wait for WiFi stack to fully drop before declaring ASLEEP
-        if (!wifi_manager_is_connected()) {
-            _telem_phase = TelemetryPhase::ASLEEP;
-        }
-        break;
     }
 
-    // 14. Yield — let the RTOS idle-sleep between iterations -----------------
-    // At 10 ms the loop still drives LVGL at 100 calls/s (above the 50 ms
-    // move-timer cadence) while freeing CPU cycles the chip would otherwise
-    // burn in busy-wait.
-    delay(LOOP_IDLE_MS);
+    ButtonEvent bev = buttons_get_event();
+    if (bev != ButtonEvent::NONE) {
+        sleep_controller_mark_activity();
+        switch (bev) {
+        case ButtonEvent::PWR_SHORT:
+            sleep_controller_toggle_screen_sleep();
+            break;
+        case ButtonEvent::PWR_DOUBLE:
+            cb_toggle_wifi();
+            refresh_settings_ui();
+            if (g_active_game < 0) ui_show_screen(UiScreen::SETTINGS);
+            break;
+        case ButtonEvent::PWR_LONG:
+            sleep_controller_power_off(save_all_atomic);
+            break;
+        case ButtonEvent::BOOT_SHORT:
+            if (g_active_game >= 0) stop_active_minigame(nullptr);
+            else if (g_pet.hasActivePet && !g_pet.isDead) ui_show_screen(UiScreen::HOME);
+            break;
+        default: break;
+        }
+    }
+
+    if ((now - g_last_imu_ms) >= 50) {
+        g_last_imu_ms = now;
+        imu_driver_update();
+
+        if (imu_consume_motion_wake() && sleep_controller_mode() != PowerMode::LIGHT_SLEEP) {
+            sleep_controller_mark_activity();
+        }
+
+        uint32_t steps = imu_consume_new_steps();
+        if (steps > 0) {
+            pet_state_lock();
+            zoo_apply_steps(&g_pet, steps);
+            pet_state_unlock();
+        }
+
+        ShakeLevel sh = imu_get_shake();
+        if (sh != ShakeLevel::NONE && g_active_game < 0 && !focus_timer_is_active()) {
+            sleep_controller_mark_activity();
+            bool hard = (sh == ShakeLevel::HARD);
+            pet_state_lock();
+            zoo_trigger_shake(&g_pet, hard, now);
+            pet_state_unlock();
+            if (hard) {
+                buzzer_play_async(MELODY_DIZZY, MELODY_DIZZY_LEN);
+                if (ui_current_screen() == UiScreen::HOME) ui_show_speech_bubble("Whoa... dizzy!", 2600);
+            } else {
+                buzzer_play_async(MELODY_HAPPY, 2);
+            }
+        }
+
+        static uint32_t last_lullaby_ms = 0;
+        if (imu_is_rocking_lullaby() && (now - last_lullaby_ms) >= 5000 && g_active_game < 0) {
+            last_lullaby_ms = now;
+            pet_state_lock();
+            zoo_perform_action(&g_pet, ZooAction::ROCK_LULLABY, nullptr, 0);
+            pet_state_unlock();
+            buzzer_play_async(MELODY_LULLABY, MELODY_LULLABY_LEN);
+            if (ui_current_screen() == UiScreen::HOME) ui_show_speech_bubble("Soothed by gentle rocking...", 3000);
+        }
+    }
+
+    if (g_active_game >= 0) {
+        MiniGameResult res = {};
+        if (g_active_game == 0) {
+            int16_t tx = 0, ty = 0;
+            touch_cst816_get_xy(&tx, &ty);
+            res = forage_catch_update(imu_get_tilt_x(), tx, touch_cst816_is_pressed(), now);
+        } else if (g_active_game == 1) {
+            res = habitat_care_update(now);
+        } else {
+            res = rhythm_chirp_update(now);
+        }
+        if (res.finished) {
+            stop_active_minigame(&res);
+        }
+    }
+
+    if ((now - g_last_bat_ms) >= 15000UL) {
+        g_last_bat_ms = now;
+        float v = battery_read_voltage();
+        g_bat_pct = battery_v_to_percent(v);
+        if (battery_is_low_brownout(v)) {
+            sleep_controller_power_off(save_all_atomic);
+        }
+    }
+
+    if ((now - g_last_game_ms) >= GAME_TICK_MS) {
+        g_last_game_ms = now;
+
+        int64_t ep = (int64_t)rtc_get_epoch();
+        uint8_t hr = rtc_get_hour(g_cfg.tz_offset_min);
+        uint8_t mn = rtc_get_minute(g_cfg.tz_offset_min);
+
+        ZooTickEvents tev_1s = {};
+        pet_state_lock();
+        tev_1s = zoo_tick_1s(&g_pet, ep, hr, g_cfg.demo_speed, now);
+
+        if (tev_1s.stageAdvanced) {
+            const SpeciesProfile& sp = species_get(g_pet.speciesId);
+            char ev[64];
+            snprintf(ev, sizeof(ev), "Grew into %s!", sp.stageNames[tev_1s.newStage]);
+            memory_record_event(&g_mem, ev, ep);
+            zoo_save_state(&g_pet);
+        }
+
+        if (g_pet.isDead && !g_memorial_shown) {
+            g_memorial_shown = true;
+            zoo_save_state(&g_pet);
+            ui_refresh_memorial(&g_pet);
+            pet_state_unlock();
+            buzzer_play_async(MELODY_DEAD, MELODY_DEAD_LEN);
+            ui_show_screen(UiScreen::MEMORIAL);
+        } else {
+            if (g_active_game < 0) {
+                if (ui_current_screen() == UiScreen::FOCUS && focus_timer_is_active()) {
+                    ui_refresh_focus(true, focus_timer_duration_min(),
+                                     focus_timer_remaining_sec(now),
+                                     focus_timer_progress_pct(now),
+                                     g_cfg.demo_speed, g_pet.petName);
+                } else {
+                    ui_update_home(&g_pet, &g_cfg, hr, mn, g_bat_pct,
+                                   web_companion_is_active(), now);
+                }
+            }
+            pet_state_unlock();
+
+            if (tev_1s.stageAdvanced) {
+                buzzer_play_async(MELODY_EVOLVE, MELODY_EVOLVE_LEN);
+                ui_show_speech_bubble("Evolved to a new stage!", 4500);
+            } else if (tev_1s.becameSick) {
+                buzzer_play_async(MELODY_SICK, MELODY_SICK_LEN);
+            }
+        }
+
+        if ((now / 1000UL) - g_last_save_s >= AUTOSAVE_INTERVAL_S) {
+            g_last_save_s = now / 1000UL;
+            save_all_atomic();
+        }
+    }
+
+    // Keep device awake (only dim/light sleep allowed if not active) during Focus sprint or Quiz
+    bool keep_awake = web_companion_is_active() || pet_brain_is_busy() ||
+                      (g_active_game >= 0) || focus_timer_is_active() ||
+                      (ui_current_screen() == UiScreen::QUIZ);
+    sleep_controller_update(keep_awake, pet_brain_is_busy(), (g_active_game >= 0), save_all_atomic);
+
+    delay(5);
 }

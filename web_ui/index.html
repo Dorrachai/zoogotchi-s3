@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>ZooGotchi S3 — Field & Study Companion</title>
+<style>
+:root{
+  --bg:#FBF8F1;--card:#FFFFFF;--ink:#1A3327;--muted:#5B7065;
+  --accent:#2E6F4E;--warm:#C85A32;--study:#6D28D9;--line:#E5DEC9;--soft:#EEF4EC;
+}
+*{box-sizing:border-box;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+body{margin:0;background:var(--bg);color:var(--ink);padding-bottom:74px}
+header{padding:14px 16px;background:var(--card);border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:5}
+.brand{font-weight:700;font-size:1.05rem;letter-spacing:-.01em}
+.pill{font-size:.75rem;padding:4px 9px;border-radius:99px;background:var(--soft);color:var(--accent);font-weight:600}
+main{max-width:620px;margin:0 auto;padding:12px 14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:12px;box-shadow:0 2px 8px rgba(26,51,39,.04)}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.stat{background:var(--bg);padding:8px 10px;border-radius:10px;border:1px solid var(--line)}
+.stat label{font-size:.72rem;color:var(--muted);display:flex;justify-content:space-between}
+.bar{height:7px;background:#E6E1D3;border-radius:99px;overflow:hidden;margin-top:4px}
+.bar>i{display:block;height:100%;background:var(--accent);border-radius:99px;transition:width .3s}
+.chatlog{max-height:280px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;margin-bottom:10px;padding:4px}
+.b{padding:9px 12px;border-radius:14px;max-width:86%;font-size:.92rem;line-height:1.35}
+.bu{align-self:flex-end;background:var(--accent);color:#fff;border-bottom-right-radius:4px}
+.bp{align-self:flex-start;background:var(--soft);color:var(--ink);border-bottom-left-radius:4px}
+input,textarea,button{font-size:.9rem;border-radius:10px;border:1px solid var(--line);padding:9px 12px}
+input,textarea{background:var(--bg);color:var(--ink);width:100%}
+button{background:var(--accent);color:#fff;border:none;font-weight:600;cursor:pointer}
+button.sec{background:var(--soft);color:var(--ink);border:1px solid var(--line)}
+button.warm{background:var(--warm)}
+button.study{background:var(--study)}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+.chip{font-size:.76rem;padding:5px 10px;background:var(--soft);color:var(--accent);border-radius:99px;border:1px solid var(--line);cursor:pointer}
+nav{position:fixed;bottom:0;left:0;right:0;background:var(--card);border-top:1px solid var(--line);display:flex;justify-content:space-around;padding:7px 2px}
+nav button{background:none;color:var(--muted);font-size:.75rem;padding:6px 8px}
+nav button.on{color:var(--accent);background:var(--soft)}
+.hide{display:none}
+.small{font-size:.8rem;color:var(--muted)}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <div class="brand" id="hdrName">ZooGotchi S3</div>
+    <div class="small" id="hdrSub">Loading habitat...</div>
+  </div>
+  <span class="pill" id="hdrBat">--%</span>
+</header>
+
+<main>
+  <section id="tChat">
+    <div class="card">
+      <div class="row" style="justify-content:space-between;margin-bottom:8px">
+        <strong id="petBadge">Companion Chat</strong>
+        <span class="pill" id="brainBadge">On-Chip AI</span>
+      </div>
+      <div class="chatlog" id="chatLog">
+        <div class="b bp">Tap a quick prompt or ask about your pet or latest LeetCode/language study!</div>
+      </div>
+      <div class="chips">
+        <span class="chip" onclick="quickAsk('How are you feeling?')">How are you?</span>
+        <span class="chip" onclick="quickAsk('Tell me a fun fact!')">Fun Fact</span>
+        <span class="chip" onclick="quickAsk('What did we study lately?')">Study Recall</span>
+        <span class="chip" onclick="quickAsk('How were our steps today?')">Steps</span>
+      </div>
+      <div class="row" style="flex-wrap:nowrap">
+        <input id="chatIn" maxlength="120" placeholder="Say hello (max 120 chars)..." onkeydown="if(event.key==='Enter')sendChat()">
+        <button onclick="sendChat()">Send</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="small" style="margin-bottom:6px">Remote Care</div>
+      <div class="row">
+        <button class="sec" onclick="doAct('pet')">Pet</button>
+        <button class="sec" onclick="doAct('feed')" id="btnFeed">Feed</button>
+        <button class="sec" onclick="doAct('treat')" id="btnTreat">Treat</button>
+        <button class="sec" onclick="doAct('env')" id="btnEnv">Care</button>
+        <button class="sec" onclick="doAct('vet')">Vet</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="tStudy" class="hide">
+    <div class="card">
+      <div class="row" style="justify-content:space-between">
+        <strong>Spaced-Repetition Academy</strong>
+        <span class="pill" id="studyXp">0 XP</span>
+      </div>
+      <p class="small" id="studyMeta" style="margin:6px 0">Loading progress...</p>
+      <div class="grid2" id="deckGrid"></div>
+    </div>
+    <div class="card">
+      <strong>Custom Flashcard Studio (Up to 40 Cards)</strong>
+      <p class="small" style="margin:6px 0">Format one card per line:<br><code>Question | Correct | Wrong1 | Wrong2 | Wrong3 | Takeaway</code></p>
+      <div class="row" style="margin-bottom:8px">
+        <button class="sec" onclick="loadNeetCodePack()">Load NeetCode Trees/Graphs/DP Pack</button>
+        <button class="sec" onclick="loadJlptPack()">Load JLPT N2/N1 Bonus Pack</button>
+      </div>
+      <textarea id="deckInput" rows="7" placeholder="Lowest Common Ancestor in BST? | Compare p,q vs root | Always BFS | Sort array | Use Union Find | Split on BST value inequality"></textarea>
+      <div class="row" style="margin-top:8px">
+        <button class="study" onclick="uploadCustomDeck()">Upload to ZooGotchi</button>
+        <span class="small" id="deckMsg"></span>
+      </div>
+    </div>
+    <div class="card">
+      <strong>On-Device Knowledge Search (BM25 RAG)</strong>
+      <p class="small" style="margin:6px 0">Search flash/PSRAM index (/rag/kb.bin): biology, JLPT, NeetCode, hardware.</p>
+      <div class="row" style="flex-wrap:nowrap">
+        <input id="ragIn" maxlength="80" placeholder="e.g. manatee seagrass, ~ni kagitte, sliding window..." onkeydown="if(event.key==='Enter')searchRag()">
+        <button onclick="searchRag()">Search</button>
+      </div>
+      <div id="ragRes" class="small" style="margin-top:8px"></div>
+    </div>
+  </section>
+
+  <section id="tZoo" class="hide">
+    <div class="card">
+      <strong id="bioTitle">Field Biology</strong>
+      <p class="small" id="bioText" style="margin:6px 0"></p>
+      <div class="grid2" id="vitalsGrid"></div>
+    </div>
+    <div class="card">
+      <strong>Personality & Steps</strong>
+      <p class="small" id="traitSummary" style="margin:6px 0"></p>
+    </div>
+    <div class="card">
+      <strong>Memory Diary</strong>
+      <div id="diaryList" class="small" style="margin-top:6px"></div>
+    </div>
+    <div class="card">
+      <strong>Sanctuary Memorials (Real Animals)</strong>
+      <div id="memorialList" class="small" style="margin-top:6px"></div>
+    </div>
+  </section>
+
+  <section id="tLineage" class="hide">
+    <div class="card">
+      <strong>Karimono Cross-Breeding</strong>
+      <p class="small" id="kariInfo">Adopt a Karimono to unlock multi-generation genetics!</p>
+      <div id="breedBox" class="hide">
+        <div class="small">Your Genome Code: <strong id="myCode">------------</strong></div>
+        <div style="margin:8px 0"><input id="partnerCode" placeholder="Optional 12-char partner code (blank = Plaza)"></div>
+        <div style="margin:8px 0"><input id="childName" maxlength="14" placeholder="Offspring name (optional)"></div>
+        <button class="warm" onclick="doBreed()">Cross-Breed Now</button>
+      </div>
+    </div>
+    <div class="card">
+      <strong>Lineage Tree</strong>
+      <div id="lineageList" class="small" style="margin-top:6px"></div>
+    </div>
+  </section>
+
+  <section id="tSet" class="hide">
+    <div class="card">
+      <strong>Device & Clock Sync</strong>
+      <div style="margin:8px 0"><label class="small">Keeper Name</label><input id="cfgKeeper" maxlength="15"></div>
+      <div style="margin:8px 0"><label class="small">Pet Name</label><input id="cfgPet" maxlength="15"></div>
+      <div style="margin:8px 0"><label class="small">Home Wi-Fi SSID (optional)</label><input id="cfgSsid" maxlength="63"></div>
+      <div style="margin:8px 0"><label class="small">Home Wi-Fi Password</label><input id="cfgPass" type="password" maxlength="63"></div>
+      <div class="row" style="margin-top:10px">
+        <button onclick="saveCfg(false)">Save Settings</button>
+        <button class="sec" onclick="saveCfg(true)">Sync RTC to Phone Clock</button>
+      </div>
+      <p class="small" id="cfgMsg"></p>
+    </div>
+  </section>
+</main>
+
+<nav>
+  <button class="on" onclick="tab(0,this)">Chat</button>
+  <button onclick="tab(1,this)">Study</button>
+  <button onclick="tab(2,this)">Zoo</button>
+  <button onclick="tab(3,this)">Lineage</button>
+  <button onclick="tab(4,this)">Menu</button>
+</nav>
+
+<script>
+const $=id=>document.getElementById(id);
+function tab(i,el){
+  ['tChat','tStudy','tZoo','tLineage','tSet'].forEach((t,idx)=>$(t).classList.toggle('hide',idx!==i));
+  document.querySelectorAll('nav button').forEach(b=>b.classList.remove('on'));
+  el.classList.add('on');
+  if(i===1)loadStudy();
+  if(i===2)loadDiaryAndMem();
+  if(i===3)loadLineage();
+}
+function addBubble(cls,txt){
+  const d=document.createElement('div');
+  d.className='b '+cls;
+  d.textContent=txt;
+  $('chatLog').appendChild(d);
+  $('chatLog').scrollTop=$('chatLog').scrollHeight;
+  return d;
+}
+function quickAsk(t){$('chatIn').value=t;sendChat();}
+async function sendChat(){
+  const inp=$('chatIn'), msg=inp.value.trim();
+  if(!msg)return;
+  inp.value='';
+  addBubble('bu',msg);
+  const bot=addBubble('bp','...');
+  let ragEl=null;
+  try{
+    const res=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:msg})});
+    const rdr=res.body.getReader(), dec=new TextDecoder();
+    let buf='';
+    while(true){
+      const {done,value}=await rdr.read();
+      if(done)break;
+      buf+=dec.decode(value,{stream:true});
+      const lines=buf.split('\n'); buf=lines.pop();
+      for(const ln of lines){
+        if(ln.startsWith('data: ')){
+          try{
+            const j=JSON.parse(ln.slice(6));
+            if(j.rag){
+              ragEl=document.createElement('div');
+              ragEl.className='small';
+              ragEl.style.marginTop='4px';
+              ragEl.textContent=`RAG: ${j.rag} (${Number(j.score||0).toFixed(1)})`;
+            }
+            if(j.text){
+              bot.textContent=j.text;
+              if(ragEl)bot.appendChild(ragEl);
+            }
+          }catch(e){}
+        }
+      }
+    }
+  }catch(e){bot.textContent='Connection hiccup — retry!';}
+}
+async function doAct(a){
+  const r=await fetch('/api/action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:a})});
+  const j=await r.json();
+  addBubble('bp',j.msg||'Done!');
+  refreshState();
+}
+async function doBreed(){
+  const r=await fetch('/api/breed',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({code:$('partnerCode').value.trim(),childName:$('childName').value.trim()})});
+  const j=await r.json();
+  alert(j.msg); refreshState(); loadLineage();
+}
+async function saveCfg(syncRtc){
+  const body={keeperName:$('cfgKeeper').value.trim(),petName:$('cfgPet').value.trim(),
+    wifiSsid:$('cfgSsid').value.trim(),wifiPass:$('cfgPass').value};
+  if(syncRtc){
+    body.rtcEpoch=Math.floor(Date.now()/1000);
+    body.tzOffsetMin=-new Date().getTimezoneOffset();
+  }
+  await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  $('cfgMsg').textContent=syncRtc?'Saved & RTC clock synced!':'Settings saved!';
+  refreshState();
+}
+function loadNeetCodePack(){
+  $('deckInput').value=[
+    "Validate BST invariant at node? | Lower < val < Upper | Left < Right only | Root != null | Use BFS only | Pass (low, high) bounds recursively",
+    "Lowest Common Ancestor in BST? | Split where p,q diverge | Full tree BFS | Sort inorder | Union Find | Walk left if both < root, right if both > root",
+    "Level Order Tree Traversal? | BFS Queue per len(q) | Recursion stack | Min-Heap | Prefix sum | Pop current queue size for each level",
+    "Number of Islands in 2D grid? | DFS/BFS flood fill | Binary Search | Sliding Window | Monotonic Stack | Mark visited land '0' in O(M*N)",
+    "Clone Graph without cycles looping? | HashMap old->new copy | Sort adjacency | Two Pointers | Greedy queue | Check if node in oldToNew map first",
+    "House Robber DP recurrence? | max(rob1+n, rob2) | rob1 + rob2 | sum(evens) | min(rob1, n) | O(1) space rolling 2-state transition",
+    "Coin Change minimum coins DP? | Bottom-up 1D dp[a] | Greedy largest coin | Binary Search | Monotonic Stack | Greedy fails (e.g. [1,3,4],6 -> 3+3)",
+    "Merge Intervals first step? | Sort by start time | Sort by length | Reverse list | Use Hash Set | Compare cur.start <= res[-1][1]"
+  ].join('\n');
+}
+function loadJlptPack(){
+  $('deckInput').value=[
+    "[N2] 'Kotoshi wa kyonen ___ atsui.' Even more than last year? | ni mo mashite | ni kakete | ni kawatte | wo towazu | ~ni mo mashite = even more than / above and beyond",
+    "[N2] 'Haru ___ kyuu ni samuku natta.' Sudden unexpected turn? | ka to omoikiya | ni kagirazu | to shitara | wo motte | ~ka to omoikiya = contrary to expectation, sudden turn",
+    "[N1] 'Sonna uwasa wa shinjiru ___.' Not worth considering? | ni tarinai | ni taenai | made mo nai | beku mo nai | ~ni tarinai = not worth / below the bar to care",
+    "[N1] 'Ima sara koukai suru ___.' Nothing can be done about it? | beku mo nai | kagiri da | mono to suru | to atte | ~beku mo nai = cannot possibly be expected to happen",
+    "[N1] 'Kono ruuru wa genba ___ tsukurareta.' Aligned with facts? | ni sokushite | ni tsuki | wo hete | ni itaru made | ~ni sokushite = closely grounded in actual reality/facts",
+    "[N2] 'Kyou ___ mise wo shimemasu.' Effective ending today? | wo kagiri ni | wo kawakiri ni | ni watatte | wo towazu | ~wo kagiri ni = with today as the final boundary/limit",
+    "[N1] 'Kikoku shite ___ mainichi isogashii.' Ever since X happened? | kara to iu mono | ni kagirazu | to shitara | made mo naku | ~te kara to iu mono = continuously ever since X occurred",
+    "[N2] Vocab: 'Kare no iken ni ___ suru.' Formal 'oppose/object'? | hantai | sansei | kyouryoku | kyoka | Hantai = opposition; contrast with sansei (agree)"
+  ].join('\n');
+}
+async function uploadCustomDeck(){
+  const lines=$('deckInput').value.split('\n').map(s=>s.trim()).filter(Boolean).slice(0,40);
+  const cards=[];
+  for(const ln of lines){
+    const p=ln.split('|').map(x=>x.trim());
+    if(p.length>=5){
+      cards.push({q:p[0].slice(0,88),c:[p[1].slice(0,24),p[2].slice(0,24),p[3].slice(0,24),p[4].slice(0,24)],a:0,e:(p[5]||p[1]).slice(0,76),t:p[1].slice(0,22)});
+    }
+  }
+  if(!cards.length){$('deckMsg').textContent='Need >=1 valid pipe line';return;}
+  const r=await fetch('/api/decks/custom',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cards})});
+  const j=await r.json();
+  $('deckMsg').textContent=j.ok?`Uploaded ${j.count} cards!`:'Upload failed';
+  loadStudy();
+}
+async function loadStudy(){
+  const s=await(await fetch('/api/study')).json();
+  $('studyXp').textContent=`${s.xp} XP · ${s.streak}d`;
+  $('studyMeta').textContent=`Mastered: ${s.mastered} · Due Now: ${s.totalDue} · Focus: ${s.focusMin}m`+(s.lastLearned?` · Pet learned: "${s.lastLearned}"`:'');
+  $('deckGrid').innerHTML=(s.decks||[]).map(d=>`<div class="stat"><label><span>${d.name}</span><b>${d.due}/${d.total}</b></label></div>`).join('');
+}
+async function searchRag(){
+  const q=$('ragIn').value.trim(), out=$('ragRes');
+  if(!q){out.textContent='Enter a search query.';return;}
+  out.textContent='Searching on-device BM25 index...';
+  const r=await(await fetch('/api/rag',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q})})).json();
+  out.textContent='';
+  const hits=r.hits||[];
+  if(!hits.length){out.textContent=`No hits across ${r.chunks||0} indexed chunks.`;return;}
+  hits.forEach(h=>{
+    const card=document.createElement('div');
+    card.className='stat'; card.style.marginBottom='6px';
+    const b=document.createElement('strong');
+    b.textContent=`${h.title} (${Number(h.score).toFixed(2)})`;
+    const p=document.createElement('div');
+    p.textContent=h.snippet;
+    card.appendChild(b); card.appendChild(p); out.appendChild(card);
+  });
+}
+async function refreshState(){
+  try{
+    const r=await fetch('/api/state'); const s=await r.json();
+    $('hdrName').textContent=s.petName+' · '+s.speciesName;
+    $('hdrSub').textContent=`${s.categoryName} · ${s.stageName} · ${s.mood} · ${String(s.rtcHour).padStart(2,'0')}:${String(s.rtcMin).padStart(2,'0')}`;
+    $('hdrBat').textContent=`${s.batteryPct}% · ${s.coins}c`;
+    $('petBadge').textContent=s.isKarimono?`Gen ${s.generation||1} Karimono`:s.biome;
+    $('brainBadge').textContent=s.brainBackend;
+    $('btnFeed').textContent='Feed '+s.primaryFood.split(' ')[0];
+    $('btnTreat').textContent=s.treatFood.split(' ')[0];
+    $('btnEnv').textContent=s.envLabel;
+    $('bioTitle').textContent=`${s.speciesName} (${s.scientific})`;
+    $('bioText').textContent=`${s.circadian} · ${s.biome} · Age ${s.ageHours}h`+(s.isKarimono?' · Cross-Breed Lineage':` · Lifespan ${s.lifespanHours}h`)+` — "${s.funFact}"`;
+    const bars=[['Hunger',s.hunger],['Hydration',s.hydration],[s.envLabel,s.envCare],['Enrich',s.enrichment],['Energy',s.energy],['Health',s.health],['Bond',s.bond]];
+    $('vitalsGrid').innerHTML=bars.map(([k,v])=>`<div class="stat"><label><span>${k}</span><b>${v}%</b></label><div class="bar"><i style="width:${v}%"></i></div></div>`).join('');
+    $('traitSummary').textContent=`Play/Calm: ${s.playfulCalm} · Brave/Shy: ${s.braveShy} · Warm/Indep: ${s.affectionIndep} · Curious: ${s.curiousRoutine} · Steps today: ${s.stepsToday} (Total ${s.stepsTotal})`;
+    if(s.isKarimono){
+      $('kariInfo').textContent=s.canBreed?'Adult Karimono ready to cross-breed!':'Raise Karimono to Adult stage to cross-breed.';
+      $('breedBox').classList.toggle('hide',!s.canBreed);
+      $('myCode').textContent=s.genomeCode||'';
+    }else{
+      $('kariInfo').textContent='Switch to a Karimono creature on the device to cross-breed lineages.';
+      $('breedBox').classList.add('hide');
+    }
+    if(!$('cfgKeeper').value)$('cfgKeeper').value=s.keeperName;
+    if(!$('cfgPet').value)$('cfgPet').value=s.petName;
+  }catch(e){}
+}
+async function loadDiaryAndMem(){
+  const d=await(await fetch('/api/diary')).json();
+  $('diaryList').innerHTML=(d.diary||[]).slice().reverse().map(x=>`<div>• ${x.t}</div>`).join('')||'No memories yet.';
+  const m=await(await fetch('/api/memorial')).json();
+  $('memorialList').innerHTML=(m.memorials||[]).slice().reverse().map(x=>`<div>✿ ${x.name} — lived ${x.hrs}h (Bond ${x.bond}%)</div>`).join('')||'No memorials yet.';
+}
+async function loadLineage(){
+  const l=await(await fetch('/api/lineage')).json();
+  $('lineageList').innerHTML=(l.entries||[]).slice().reverse().map(x=>`<div>Gen ${x.gen}: <b>${x.name}</b> (${x.pa} × ${x.pb})</div>`).join('')||'No Karimono lineage entries yet.';
+}
+refreshState();
+setInterval(refreshState,6000);
+</script>
+</body>
+</html>
