@@ -16,6 +16,7 @@ enum class PowerMode : uint8_t {
 void      sleep_controller_init(uint8_t normal_brightness);
 void      sleep_controller_set_normal_brightness(uint8_t b);
 void      sleep_controller_mark_activity();
+void      sleep_controller_defer_deep_sleep();
 void      sleep_controller_update(bool wifi_companion_active, bool llm_busy, bool minigame_active, void (*pre_sleep_save_cb)(void));
 void      sleep_controller_toggle_screen_sleep();
 void      sleep_controller_power_off(void (*pre_sleep_save_cb)(void));

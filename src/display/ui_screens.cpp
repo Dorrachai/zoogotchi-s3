@@ -23,6 +23,7 @@ static lv_obj_t* _scr_minigame   = nullptr;
 static lv_obj_t* _scr_study_hub  = nullptr;
 static lv_obj_t* _scr_quiz       = nullptr;
 static lv_obj_t* _scr_focus      = nullptr;
+static lv_obj_t* _scr_health     = nullptr;
 
 // Adopt species widgets
 static AnimalCategory _sel_cat = AnimalCategory::LAND;
@@ -85,6 +86,18 @@ static lv_obj_t* _fc_run_box   = nullptr;
 static lv_obj_t* _fc_arc       = nullptr;
 static lv_obj_t* _fc_time_lbl  = nullptr;
 static lv_obj_t* _fc_buddy_lbl = nullptr;
+
+// Health widgets
+static lv_obj_t* _hl_dash_box     = nullptr;
+static lv_obj_t* _hl_arc          = nullptr;
+static lv_obj_t* _hl_pct_lbl      = nullptr;
+static lv_obj_t* _hl_stats_lbl    = nullptr;
+static lv_obj_t* _hl_water_lbl    = nullptr;
+static lv_obj_t* _hl_nudge_lbl    = nullptr;
+static lv_obj_t* _hl_br_box       = nullptr;
+static lv_obj_t* _hl_br_arc       = nullptr;
+static lv_obj_t* _hl_br_phase_lbl = nullptr;
+static lv_obj_t* _hl_br_cycle_lbl = nullptr;
 
 static lv_obj_t* make_screen(uint32_t bg_hex) {
     lv_obj_t* s = lv_obj_create(nullptr);
@@ -204,6 +217,7 @@ static void dock_study_cb(lv_event_t*)   { if (_cbs.onOpenStudyHub) _cbs.onOpenS
 static void dock_play_cb(lv_event_t*)    { ui_show_screen(UiScreen::PLAY); }
 static void dock_journal_cb(lv_event_t*) { ui_show_screen(UiScreen::JOURNAL); }
 static void top_menu_cb(lv_event_t*)     { ui_show_screen(UiScreen::SETTINGS); }
+static void health_open_cb(lv_event_t*)  { if (_cbs.onOpenHealth) _cbs.onOpenHealth(); else ui_show_screen(UiScreen::HEALTH); }
 static void bubble_tap_cb(lv_event_t*)   { ui_hide_speech_bubble(); }
 static void pet_tap_cb(lv_event_t*)      { if (_cbs.onAskPetTalk) _cbs.onAskPetTalk(); }
 
@@ -259,7 +273,9 @@ static void build_home_screen() {
     lv_obj_set_style_text_align(_lbl_coins, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_color(_lbl_coins, lv_color_hex(0x475569), 0);
     lv_obj_set_style_text_font(_lbl_coins, &lv_font_montserrat_10, 0);
-    lv_label_set_text(_lbl_coins, "40c · 0 steps · Tap pet to talk");
+    lv_label_set_text(_lbl_coins, "40c · 0 steps · Tap for Health");
+    lv_obj_add_flag(_lbl_coins, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(_lbl_coins, health_open_cb, LV_EVENT_CLICKED, nullptr);
 
     // Bottom 4-button dock (inset from bottom rounded corners)
     make_btn(_scr_home, 18,  226, 48, 36, 0x2E6F4E, 0xFFFFFF, "Care",  dock_care_cb,    nullptr);
@@ -325,8 +341,8 @@ static void build_play_screen() {
     make_btn(_scr_play, 20, 136, 200, 40, 0xFCE7F3, 0x1E293B, "Rhythm Chirp (Sound)",    play_game_cb, (void*)2);
     make_btn(_scr_play, 20, 182, 200, 40, 0xE8F5E9, 0x1E293B, "Zoo Shop & Glasses",
              [](lv_event_t*) { ui_show_screen(UiScreen::SHOP); }, nullptr);
-    make_btn(_scr_play, 20, 228, 200, 36, 0xE2E8F0, 0x1E293B, "Wi-Fi & Menu Settings",
-             [](lv_event_t*) { ui_show_screen(UiScreen::SETTINGS); }, nullptr);
+    make_btn(_scr_play, 20, 228, 200, 36, 0xDCFCE7, 0x14532D, "Health & Step Goals",
+             health_open_cb, nullptr);
 }
 
 static void shop_item_cb(lv_event_t* e) {
@@ -598,6 +614,96 @@ static void build_focus_screen() {
              [](lv_event_t*) { if (_cbs.onStopFocus) _cbs.onStopFocus(); }, nullptr);
 }
 
+static void build_health_screen() {
+    _scr_health = make_screen(0xFBF8F1);
+    add_header(_scr_health, "Health & Goals", go_home_cb);
+
+    _hl_dash_box = lv_obj_create(_scr_health);
+    lv_obj_set_pos(_hl_dash_box, 14, 38);
+    lv_obj_set_size(_hl_dash_box, 212, 224);
+    lv_obj_set_style_bg_opa(_hl_dash_box, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(_hl_dash_box, 0, 0);
+    lv_obj_set_style_pad_all(_hl_dash_box, 0, 0);
+    lv_obj_remove_flag(_hl_dash_box, LV_OBJ_FLAG_SCROLLABLE);
+
+    _hl_arc = lv_arc_create(_hl_dash_box);
+    lv_obj_set_size(_hl_arc, 90, 90);
+    lv_obj_set_pos(_hl_arc, 4, 2);
+    lv_arc_set_rotation(_hl_arc, 270);
+    lv_arc_set_bg_angles(_hl_arc, 0, 360);
+    lv_arc_set_range(_hl_arc, 0, 100);
+    lv_arc_set_value(_hl_arc, 0);
+    lv_obj_remove_flag(_hl_arc, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_style_opa(_hl_arc, LV_OPA_TRANSP, LV_PART_KNOB);
+    lv_obj_set_style_arc_color(_hl_arc, lv_color_hex(0x16A34A), LV_PART_INDICATOR);
+
+    _hl_pct_lbl = lv_label_create(_hl_arc);
+    lv_obj_set_style_text_color(_hl_pct_lbl, lv_color_hex(0x14532D), 0);
+    lv_obj_set_style_text_font(_hl_pct_lbl, &lv_font_montserrat_14, 0);
+    lv_label_set_text(_hl_pct_lbl, "0%");
+    lv_obj_center(_hl_pct_lbl);
+
+    _hl_stats_lbl = lv_label_create(_hl_dash_box);
+    lv_obj_set_pos(_hl_stats_lbl, 102, 4);
+    lv_obj_set_width(_hl_stats_lbl, 108);
+    lv_label_set_long_mode(_hl_stats_lbl, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_color(_hl_stats_lbl, lv_color_hex(0x1E293B), 0);
+    lv_obj_set_style_text_font(_hl_stats_lbl, &lv_font_montserrat_12, 0);
+    lv_label_set_text(_hl_stats_lbl, "Steps: 0/6000\nStreak: 0d");
+
+    make_btn(_hl_dash_box, 4, 98, 204, 36, 0xE0F2FE, 0x0C4A6E, "+1 Water Cup (0/8)",
+             [](lv_event_t*) { if (_cbs.onLogWater) _cbs.onLogWater(); }, nullptr, &_hl_water_lbl);
+    make_btn(_hl_dash_box, 4, 140, 204, 36, 0xEDE9FE, 0x4C1D95, "1m Calm Breathing (4-4-4-4)",
+             [](lv_event_t*) { if (_cbs.onToggleBreathe) _cbs.onToggleBreathe(); }, nullptr);
+
+    make_btn(_hl_dash_box, 4, 182, 54, 34, 0xFFFFFF, 0x1E293B, "-1k",
+             [](lv_event_t*) { if (_cbs.onAdjustStepGoal) _cbs.onAdjustStepGoal(-1000); }, nullptr);
+    make_btn(_hl_dash_box, 62, 182, 54, 34, 0xFFFFFF, 0x1E293B, "+1k",
+             [](lv_event_t*) { if (_cbs.onAdjustStepGoal) _cbs.onAdjustStepGoal(1000); }, nullptr);
+    make_btn(_hl_dash_box, 120, 182, 88, 34, 0xDCFCE7, 0x14532D, "Nudge: ON",
+             [](lv_event_t*) { if (_cbs.onToggleHealthReminders) _cbs.onToggleHealthReminders(); },
+             nullptr, &_hl_nudge_lbl);
+
+    // Guided 4-4-4-4 box-breathing view
+    _hl_br_box = lv_obj_create(_scr_health);
+    lv_obj_set_pos(_hl_br_box, 14, 38);
+    lv_obj_set_size(_hl_br_box, 212, 224);
+    lv_obj_set_style_bg_opa(_hl_br_box, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(_hl_br_box, 0, 0);
+    lv_obj_set_style_pad_all(_hl_br_box, 0, 0);
+    lv_obj_remove_flag(_hl_br_box, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(_hl_br_box, LV_OBJ_FLAG_HIDDEN);
+
+    _hl_br_arc = lv_arc_create(_hl_br_box);
+    lv_obj_set_size(_hl_br_arc, 126, 126);
+    lv_obj_set_pos(_hl_br_arc, 43, 6);
+    lv_arc_set_rotation(_hl_br_arc, 270);
+    lv_arc_set_bg_angles(_hl_br_arc, 0, 360);
+    lv_arc_set_range(_hl_br_arc, 0, 100);
+    lv_arc_set_value(_hl_br_arc, 0);
+    lv_obj_remove_flag(_hl_br_arc, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_style_opa(_hl_br_arc, LV_OPA_TRANSP, LV_PART_KNOB);
+    lv_obj_set_style_arc_color(_hl_br_arc, lv_color_hex(0x0D9488), LV_PART_INDICATOR);
+
+    _hl_br_phase_lbl = lv_label_create(_hl_br_arc);
+    lv_obj_set_style_text_align(_hl_br_phase_lbl, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_color(_hl_br_phase_lbl, lv_color_hex(0x134E4A), 0);
+    lv_obj_set_style_text_font(_hl_br_phase_lbl, &lv_font_montserrat_16, 0);
+    lv_label_set_text(_hl_br_phase_lbl, "Inhale\n4s");
+    lv_obj_center(_hl_br_phase_lbl);
+
+    _hl_br_cycle_lbl = lv_label_create(_hl_br_box);
+    lv_obj_set_pos(_hl_br_cycle_lbl, 6, 140);
+    lv_obj_set_width(_hl_br_cycle_lbl, 200);
+    lv_obj_set_style_text_align(_hl_br_cycle_lbl, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_color(_hl_br_cycle_lbl, lv_color_hex(0x0F766E), 0);
+    lv_obj_set_style_text_font(_hl_br_cycle_lbl, &lv_font_montserrat_12, 0);
+    lv_label_set_text(_hl_br_cycle_lbl, "Cycle 1/4 · Relax shoulders");
+
+    make_btn(_hl_br_box, 36, 174, 140, 36, 0xFEE2E2, 0x991B1B, "Stop Breathing",
+             [](lv_event_t*) { if (_cbs.onToggleBreathe) _cbs.onToggleBreathe(); }, nullptr);
+}
+
 // =============================================================================
 // Public API
 // =============================================================================
@@ -616,6 +722,7 @@ void ui_screens_init(const UiCallbacks& cbs) {
     build_study_hub_screen();
     build_quiz_screen();
     build_focus_screen();
+    build_health_screen();
 }
 
 void ui_show_screen(UiScreen scr) {
@@ -634,6 +741,7 @@ void ui_show_screen(UiScreen scr) {
     case UiScreen::STUDY_HUB:     lv_screen_load(_scr_study_hub); break;
     case UiScreen::QUIZ:          lv_screen_load(_scr_quiz);      break;
     case UiScreen::FOCUS:         lv_screen_load(_scr_focus);     break;
+    case UiScreen::HEALTH:        lv_screen_load(_scr_health);    break;
     }
 }
 
@@ -850,4 +958,38 @@ void ui_refresh_focus(bool active, uint16_t duration_min, uint32_t rem_sec, uint
         if (demo_speed) lv_obj_remove_flag(_fc_demo_btn, LV_OBJ_FLAG_HIDDEN);
         else            lv_obj_add_flag(_fc_demo_btn, LV_OBJ_FLAG_HIDDEN);
     }
+}
+
+void ui_refresh_health(const ZooPetState* pet, const HealthState* hs, const BreatheSnapshot* br) {
+    if (!hs) return;
+    if (br && br->active) {
+        lv_obj_add_flag(_hl_dash_box, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_flag(_hl_br_box, LV_OBJ_FLAG_HIDDEN);
+        lv_arc_set_value(_hl_br_arc, br->pct);
+        lv_label_set_text_fmt(_hl_br_phase_lbl, "%s\n%us",
+                              br->phase ? br->phase : "Breathe", (unsigned)br->phaseSecLeft);
+        lv_label_set_text_fmt(_hl_br_cycle_lbl, "Cycle %u/%u · Relax shoulders",
+                              (unsigned)br->cycleNum, (unsigned)br->totalCycles);
+        return;
+    }
+
+    lv_obj_remove_flag(_hl_dash_box, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(_hl_br_box, LV_OBJ_FLAG_HIDDEN);
+
+    uint32_t steps = pet ? pet->stepsToday : 0;
+    uint32_t goal  = hs->stepGoal > 0 ? hs->stepGoal : 6000;
+    uint32_t pct   = (steps * 100UL) / goal;
+    if (pct > 100) pct = 100;
+    uint32_t avg   = health_week_avg_steps(steps);
+
+    lv_arc_set_value(_hl_arc, (int32_t)pct);
+    lv_label_set_text_fmt(_hl_pct_lbl, "%u%%", (unsigned)pct);
+    lv_label_set_text_fmt(_hl_stats_lbl,
+                          "Steps: %lu/%lu\nStreak: %ud\n7d Avg: %lu\nWater: %u/%u",
+                          (unsigned long)steps, (unsigned long)goal,
+                          (unsigned)hs->goalStreakDays, (unsigned long)avg,
+                          (unsigned)hs->waterCupsToday, (unsigned)hs->waterGoalCups);
+    lv_label_set_text_fmt(_hl_water_lbl, "+1 Water Cup (%u/%u)",
+                          (unsigned)hs->waterCupsToday, (unsigned)hs->waterGoalCups);
+    lv_label_set_text(_hl_nudge_lbl, hs->remindersEnabled ? "Nudge: ON" : "Nudge: OFF");
 }

@@ -210,6 +210,9 @@ def static_care_and_genetics_chunks() -> list[dict]:
         (CAT_CARE, "AI Safety Architecture", "3-Layer Guardrails",
          "On-chip PLE outputs strictly from 1,421 vetted V_out tokens backed by input sanitization, output check, and RAG grounding.",
          "safety guardrails vocab v_out ple micro llm injection protection"),
+        (CAT_CARE, "Health & Step Goal Coach", "Health Goals",
+         "Tracks daily steps with RTC midnight rollover, 7-day streak, water cups (hydrates pet too!), move nudges, and 1m 4-4-4-4 breathing.",
+         "health steps pedometer goal streak water hydration breathing nudge posture walk"),
     ]
     return [
         {

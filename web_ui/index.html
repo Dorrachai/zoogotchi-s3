@@ -118,6 +118,27 @@ nav button.on{color:var(--accent);background:var(--soft)}
 
   <section id="tZoo" class="hide">
     <div class="card">
+      <div class="row" style="justify-content:space-between;margin-bottom:6px">
+        <strong>Health & Wellness Goals</strong>
+        <span class="pill" id="hlStreak">0d streak</span>
+      </div>
+      <div class="grid2" style="margin-bottom:8px">
+        <div class="stat"><label><span>Steps</span><b id="hlStepsVal">0/6000</b></label><div class="bar"><i id="hlStepsBar" style="width:0%"></i></div></div>
+        <div class="stat"><label><span>Water Cups</span><b id="hlWaterVal">0/8</b></label><div class="bar"><i id="hlWaterBar" style="width:0%;background:#0284c7"></i></div></div>
+      </div>
+      <p class="small" id="hlWeekSummary" style="margin:4px 0 8px">7d Avg: 0 steps</p>
+      <div class="row" style="margin-bottom:8px">
+        <button onclick="logWater()">+1 Water Cup</button>
+        <button class="sec" onclick="saveHealthCfg()">Save Goals</button>
+        <label class="small" style="display:flex;align-items:center;gap:4px"><input id="hlNudgeIn" type="checkbox" style="width:auto" checked>Hourly Nudge</label>
+      </div>
+      <div class="grid2">
+        <div><label class="small">Step Goal</label><input id="hlStepGoalIn" type="number" min="2000" max="20000" step="500" value="6000"></div>
+        <div><label class="small">Water Goal (cups)</label><input id="hlWaterGoalIn" type="number" min="4" max="16" step="1" value="8"></div>
+      </div>
+      <div class="small" id="hlMsg" style="margin-top:6px"></div>
+    </div>
+    <div class="card">
       <strong id="bioTitle">Field Biology</strong>
       <p class="small" id="bioText" style="margin:6px 0"></p>
       <div class="grid2" id="vitalsGrid"></div>
@@ -184,7 +205,7 @@ function tab(i,el){
   document.querySelectorAll('nav button').forEach(b=>b.classList.remove('on'));
   el.classList.add('on');
   if(i===1)loadStudy();
-  if(i===2)loadDiaryAndMem();
+  if(i===2){loadHealth();loadDiaryAndMem();}
   if(i===3)loadLineage();
 }
 function addBubble(cls,txt){
@@ -352,11 +373,42 @@ async function loadDiaryAndMem(){
   const m=await(await fetch('/api/memorial')).json();
   $('memorialList').innerHTML=(m.memorials||[]).slice().reverse().map(x=>`<div>✿ ${x.name} — lived ${x.hrs}h (Bond ${x.bond}%)</div>`).join('')||'No memorials yet.';
 }
+async function loadHealth(){
+  try{
+    const h=await(await fetch('/api/health')).json();
+    $('hlStreak').textContent=`${h.goalStreakDays||0}d streak`;
+    $('hlStepsVal').textContent=`${h.stepsToday||0}/${h.stepGoal||6000}`;
+    $('hlStepsBar').style.width=`${h.goalPct||0}%`;
+    const wp=Math.min(100,Math.round(((h.waterCupsToday||0)/(h.waterGoalCups||8))*100));
+    $('hlWaterVal').textContent=`${h.waterCupsToday||0}/${h.waterGoalCups||8}`;
+    $('hlWaterBar').style.width=`${wp}%`;
+    $('hlWeekSummary').textContent=`7d Avg: ${h.weekAvg||0} · Breathe: ${h.breatheSessions||0} · History: [${(h.weekSteps||[]).join(', ')}]`;
+    if(document.activeElement!==$('hlStepGoalIn'))$('hlStepGoalIn').value=h.stepGoal||6000;
+    if(document.activeElement!==$('hlWaterGoalIn'))$('hlWaterGoalIn').value=h.waterGoalCups||8;
+    $('hlNudgeIn').checked=h.remindersEnabled!==false;
+  }catch(e){}
+}
+async function logWater(){
+  const r=await(await fetch('/api/health',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'water'})})).json();
+  $('hlMsg').textContent=`Logged water (${r.waterCupsToday}/${r.waterGoalCups} cups) · Pet hydrated +10%!`;
+  loadHealth(); refreshState();
+}
+async function saveHealthCfg(){
+  const body={
+    stepGoal:parseInt($('hlStepGoalIn').value,10)||6000,
+    waterGoalCups:parseInt($('hlWaterGoalIn').value,10)||8,
+    remindersEnabled:$('hlNudgeIn').checked
+  };
+  await fetch('/api/health',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  $('hlMsg').textContent='Health goals saved!';
+  loadHealth();
+}
 async function loadLineage(){
   const l=await(await fetch('/api/lineage')).json();
   $('lineageList').innerHTML=(l.entries||[]).slice().reverse().map(x=>`<div>Gen ${x.gen}: <b>${x.name}</b> (${x.pa} × ${x.pb})</div>`).join('')||'No Karimono lineage entries yet.';
 }
 refreshState();
+loadHealth();
 setInterval(refreshState,6000);
 </script>
 </body>

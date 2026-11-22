@@ -65,7 +65,7 @@ public:
             cfg.pin_bl      = PIN_LCD_BL;
             cfg.invert      = false;
             cfg.freq        = 44100;
-            cfg.pwm_channel = 1;            // channel 0 reserved for buzzer
+            cfg.pwm_channel = 2;            // channel 2 (Timer 1); channel 0 (Timer 0) reserved for buzzer
             _bl.config(cfg);
             _panel.setLight(&_bl);
         }

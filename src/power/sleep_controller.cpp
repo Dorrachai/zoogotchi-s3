@@ -43,6 +43,18 @@ void sleep_controller_mark_activity() {
     }
 }
 
+void sleep_controller_defer_deep_sleep() {
+    uint32_t now = millis();
+    if (_mode == PowerMode::LIGHT_SLEEP) {
+        uint32_t floor_ms = (now > SLEEP_LIGHT_MS) ? (now - SLEEP_LIGHT_MS) : 0;
+        if (_last_activity < floor_ms) {
+            _last_activity = floor_ms;
+        }
+    } else if (_mode == PowerMode::ACTIVE || _mode == PowerMode::DIM) {
+        _last_activity = now;
+    }
+}
+
 void sleep_boost_cpu(bool high_perf) {
     if (high_perf) {
         _boost_refcount++;

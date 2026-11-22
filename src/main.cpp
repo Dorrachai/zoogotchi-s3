@@ -28,6 +28,7 @@
 #include "learn/study_decks.h"
 #include "learn/study_engine.h"
 #include "learn/focus_timer.h"
+#include "health/health_tracker.h"
 #include "ai/personality_memory.h"
 #include "ai/rag_retriever.h"
 #include "ai/micro_llm_ple.h"
@@ -87,6 +88,7 @@ static void save_all_atomic() {
     zoo_save_state(&g_pet);
     memory_save(&g_mem);
     study_save();
+    health_save();
     pet_state_unlock();
 }
 
@@ -379,6 +381,53 @@ static void cb_stop_focus() {
     cb_open_focus();
 }
 
+static void refresh_health_ui() {
+    uint32_t now = millis();
+    BreatheSnapshot br = health_breathe_snapshot(now);
+    pet_state_lock();
+    ui_refresh_health(&g_pet, &health_get_state(), &br);
+    pet_state_unlock();
+}
+
+static void cb_open_health() {
+    refresh_health_ui();
+    ui_show_screen(UiScreen::HEALTH);
+}
+
+static void cb_log_water() {
+    pet_state_lock();
+    health_log_water(&g_pet, (int64_t)rtc_get_epoch());
+    zoo_save_state(&g_pet);
+    pet_state_unlock();
+    buzzer_play_async(MELODY_FEED, MELODY_FEED_LEN);
+    refresh_health_ui();
+}
+
+static void cb_adjust_step_goal(int32_t delta) {
+    pet_state_lock();
+    health_adjust_step_goal(delta);
+    pet_state_unlock();
+    refresh_health_ui();
+}
+
+static void cb_toggle_health_reminders() {
+    pet_state_lock();
+    health_toggle_reminders();
+    pet_state_unlock();
+    refresh_health_ui();
+}
+
+static void cb_toggle_breathe() {
+    uint32_t now = millis();
+    if (health_breathe_is_active()) {
+        health_breathe_stop();
+    } else {
+        health_breathe_start(now);
+        buzzer_play_async(MELODY_LULLABY, 2);
+    }
+    refresh_health_ui();
+}
+
 // =============================================================================
 // setup() & loop()
 // =============================================================================
@@ -412,6 +461,9 @@ void setup() {
     sleep_controller_init(g_cfg.brightness);
     study_init();
 
+    int64_t boot_ep = (int64_t)rtc_get_epoch();
+    health_init(boot_ep, g_cfg.tz_offset_min);
+
     float bat_v = battery_read_voltage();
     g_bat_pct   = battery_v_to_percent(bat_v);
 
@@ -419,7 +471,10 @@ void setup() {
     bool has_save = zoo_load_state(&g_pet);
     memory_load(&g_mem);
     if (has_save && g_pet.hasActivePet && !g_pet.isDead) {
-        ZooTickEvents cev = zoo_catchup_elapsed(&g_pet, (int64_t)rtc_get_epoch(),
+        if (health_check_midnight_rollover(&g_pet, boot_ep, g_cfg.tz_offset_min)) {
+            zoo_save_state(&g_pet);
+        }
+        ZooTickEvents cev = zoo_catchup_elapsed(&g_pet, boot_ep,
                                                 g_cfg.tz_offset_min, g_cfg.demo_speed);
         if (cev.died) {
             g_memorial_shown = false;
@@ -433,7 +488,9 @@ void setup() {
         cb_breed_plaza, cb_start_minigame, cb_toggle_wifi, cb_toggle_mute,
         cb_toggle_demo, cb_toggle_bgr, cb_adjust_clock_hour,
         cb_open_study_hub, cb_start_quiz_deck, cb_quiz_answer, cb_quiz_next,
-        cb_open_focus, cb_start_focus, cb_stop_focus
+        cb_open_focus, cb_start_focus, cb_stop_focus,
+        cb_open_health, cb_log_water, cb_adjust_step_goal,
+        cb_toggle_health_reminders, cb_toggle_breathe
     };
     ui_screens_init(cbs);
 
@@ -503,6 +560,26 @@ void loop() {
         ui_show_speech_bubble(ev, 5500);
     }
 
+    // Guided 4-4-4-4 Breathing Session completion check
+    if (health_breathe_check_complete(now)) {
+        sleep_controller_mark_activity();
+        pet_state_lock();
+        zoo_apply_study_reward(&g_pet, 5, 8, 4, 0);
+        if (g_pet.playfulCalm > -98) g_pet.playfulCalm -= 2;
+        else                         g_pet.playfulCalm = -100;
+        strlcpy(g_mem.lastAction, "practiced calm breathing", sizeof(g_mem.lastAction));
+        memory_record_event(&g_mem, "1m box breathing complete (+5c)", rtc_get_epoch());
+        zoo_save_state(&g_pet);
+        pet_state_unlock();
+
+        buzzer_play_async(MELODY_PURR, MELODY_PURR_LEN);
+        refresh_health_ui();
+        if (ui_current_screen() != UiScreen::HEALTH) {
+            ui_show_screen(UiScreen::HOME);
+            ui_show_speech_bubble("1m breathing complete! Calm & refreshed.", 4500);
+        }
+    }
+
     TouchEvent tev = touch_cst816_get_event();
     if (tev.type != TouchEventType::NONE) {
         sleep_controller_mark_activity();
@@ -557,9 +634,31 @@ void loop() {
 
         uint32_t steps = imu_consume_new_steps();
         if (steps > 0) {
+            sleep_controller_defer_deep_sleep();
+            int64_t ep_now = (int64_t)rtc_get_epoch();
+            bool goal_hit = false;
             pet_state_lock();
             zoo_apply_steps(&g_pet, steps);
+            goal_hit = health_on_steps(&g_pet, steps, ep_now);
+            if (goal_hit) {
+                zoo_apply_study_reward(&g_pet, 25, 15, 15, 0);
+                char ev[64];
+                snprintf(ev, sizeof(ev), "Hit %lu step goal! (%ud streak)",
+                         (unsigned long)health_get_state().stepGoal,
+                         (unsigned)health_get_state().goalStreakDays);
+                memory_record_event(&g_mem, ev, ep_now);
+                zoo_save_state(&g_pet);
+            }
             pet_state_unlock();
+            if (goal_hit) {
+                sleep_controller_mark_activity();
+                buzzer_play_async(MELODY_EVOLVE, MELODY_EVOLVE_LEN);
+                if (ui_current_screen() == UiScreen::HOME) {
+                    ui_show_speech_bubble("Daily step goal reached! +25c!", 5500);
+                } else if (ui_current_screen() == UiScreen::HEALTH) {
+                    refresh_health_ui();
+                }
+            }
         }
 
         ShakeLevel sh = imu_get_shake();
@@ -617,12 +716,22 @@ void loop() {
         g_last_game_ms = now;
 
         int64_t ep = (int64_t)rtc_get_epoch();
-        uint8_t hr = rtc_get_hour(g_cfg.tz_offset_min);
-        uint8_t mn = rtc_get_minute(g_cfg.tz_offset_min);
+        uint8_t hr = 0, mn = 0;
+        rtc_epoch_to_local_hm((time_t)ep, g_cfg.tz_offset_min, &hr, &mn);
 
         ZooTickEvents tev_1s = {};
+        char nudge_msg[64] = {};
+        bool show_nudge = false;
         pet_state_lock();
+        if (health_check_midnight_rollover(&g_pet, ep, g_cfg.tz_offset_min)) {
+            zoo_save_state(&g_pet);
+        }
         tev_1s = zoo_tick_1s(&g_pet, ep, hr, g_cfg.demo_speed, now);
+
+        bool busy_or_asleep = (g_active_game >= 0) || focus_timer_is_active() ||
+                              health_breathe_is_active() || g_pet.sleeping || g_pet.isDead ||
+                              (ui_current_screen() != UiScreen::HOME);
+        show_nudge = health_check_nudge(ep, hr, busy_or_asleep, nudge_msg, sizeof(nudge_msg));
 
         if (tev_1s.stageAdvanced) {
             const SpeciesProfile& sp = species_get(g_pet.speciesId);
@@ -646,6 +755,9 @@ void loop() {
                                      focus_timer_remaining_sec(now),
                                      focus_timer_progress_pct(now),
                                      g_cfg.demo_speed, g_pet.petName);
+                } else if (ui_current_screen() == UiScreen::HEALTH) {
+                    BreatheSnapshot br = health_breathe_snapshot(now);
+                    ui_refresh_health(&g_pet, &health_get_state(), &br);
                 } else {
                     ui_update_home(&g_pet, &g_cfg, hr, mn, g_bat_pct,
                                    web_companion_is_active(), now);
@@ -658,6 +770,9 @@ void loop() {
                 ui_show_speech_bubble("Evolved to a new stage!", 4500);
             } else if (tev_1s.becameSick) {
                 buzzer_play_async(MELODY_SICK, MELODY_SICK_LEN);
+            } else if (show_nudge) {
+                buzzer_play_async(MELODY_PURR, 2);
+                ui_show_speech_bubble(nudge_msg, 5500);
             }
         }
 
@@ -667,10 +782,10 @@ void loop() {
         }
     }
 
-    // Keep device awake (only dim/light sleep allowed if not active) during Focus sprint or Quiz
+    // Keep device awake (only dim/light sleep allowed if not active) during Focus sprint, Breathing, or Quiz
     bool keep_awake = web_companion_is_active() || pet_brain_is_busy() ||
                       (g_active_game >= 0) || focus_timer_is_active() ||
-                      (ui_current_screen() == UiScreen::QUIZ);
+                      health_breathe_is_active() || (ui_current_screen() == UiScreen::QUIZ);
     sleep_controller_update(keep_awake, pet_brain_is_busy(), (g_active_game >= 0), save_all_atomic);
 
     delay(5);

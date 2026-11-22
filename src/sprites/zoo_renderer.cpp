@@ -5,7 +5,10 @@
 #include <esp_heap_caps.h>
 #include <stdlib.h>
 
-static uint16_t* _canvas_buf = nullptr;
+static uint16_t* _canvas_buf    = nullptr;
+static uint8_t*  _spr_cache_buf = nullptr;
+static char      _spr_cache_key[36] = {};
+static bool      _spr_cache_hit     = false;
 
 uint16_t rgb888_to_565(uint32_t hex) {
     uint8_t r = (hex >> 16) & 0xFF;
@@ -112,34 +115,55 @@ lv_obj_t* zoo_renderer_create_canvas(lv_obj_t* parent) {
 }
 
 // Try loading an optional LittleFS custom sprite override (/sprites/<slug>_<stage>.bin)
+// Cached in PSRAM (12,288 B = RGB565 + A8) so animations never re-seek Flash every frame.
 static bool try_load_littlefs_sprite(PixelCanvas64& c, const char* slug, uint8_t stage) {
-    char path[48];
-    snprintf(path, sizeof(path), "/sprites/%s_%u.bin", slug, (unsigned)stage);
-    if (!LittleFS.exists(path)) return false;
-    File f = LittleFS.open(path, "r");
-    if (!f) return false;
-    uint16_t w = 0, h = 0;
-    if (f.read((uint8_t*)&w, 2) != 2 || f.read((uint8_t*)&h, 2) != 2 || w != 64 || h != 64) {
-        f.close();
-        return false;
+    static constexpr size_t SPR_RGB_BYTES   = 64 * 64 * 2;
+    static constexpr size_t SPR_TOTAL_BYTES = SPR_RGB_BYTES + 64 * 64;
+
+    if (!_spr_cache_buf) {
+        _spr_cache_buf = reinterpret_cast<uint8_t*>(
+            heap_caps_malloc(SPR_TOTAL_BYTES, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+        if (!_spr_cache_buf) {
+            _spr_cache_buf = reinterpret_cast<uint8_t*>(malloc(SPR_TOTAL_BYTES));
+        }
+        if (!_spr_cache_buf) return false;
     }
-    // RGB565 + A8 (64*64*3 = 12288 bytes)
-    uint8_t row_rgb[64 * 2];
-    uint8_t row_a[64];
-    size_t alpha_off = 4 + 64 * 64 * 2;
+
+    char key[36];
+    snprintf(key, sizeof(key), "%s_%u", slug, (unsigned)stage);
+    if (strcmp(_spr_cache_key, key) != 0) {
+        strlcpy(_spr_cache_key, key, sizeof(_spr_cache_key));
+        _spr_cache_hit = false;
+
+        char path[48];
+        snprintf(path, sizeof(path), "/sprites/%s.bin", key);
+        if (LittleFS.exists(path)) {
+            File f = LittleFS.open(path, "r");
+            if (f) {
+                uint16_t w = 0, h = 0;
+                if (f.read((uint8_t*)&w, 2) == 2 && f.read((uint8_t*)&h, 2) == 2 &&
+                    w == 64 && h == 64 && f.read(_spr_cache_buf, SPR_TOTAL_BYTES) == SPR_TOTAL_BYTES) {
+                    _spr_cache_hit = true;
+                }
+                f.close();
+            }
+        }
+    }
+
+    if (!_spr_cache_hit) return false;
+
+    const uint8_t* rgb_p   = _spr_cache_buf;
+    const uint8_t* alpha_p = _spr_cache_buf + SPR_RGB_BYTES;
     for (int y = 0; y < 64; y++) {
-        f.seek(4 + y * 64 * 2);
-        if (f.read(row_rgb, sizeof(row_rgb)) != sizeof(row_rgb)) break;
-        f.seek(alpha_off + y * 64);
-        if (f.read(row_a, sizeof(row_a)) != sizeof(row_a)) break;
+        int row = y * 64;
         for (int x = 0; x < 64; x++) {
-            if (row_a[x] > 128) {
-                uint16_t px = (uint16_t)(row_rgb[x * 2] | (row_rgb[x * 2 + 1] << 8));
+            int idx = row + x;
+            if (alpha_p[idx] > 128) {
+                uint16_t px = (uint16_t)(rgb_p[idx * 2] | (rgb_p[idx * 2 + 1] << 8));
                 c.pset(x, y, px);
             }
         }
     }
-    f.close();
     return true;
 }
 

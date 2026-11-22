@@ -8,6 +8,7 @@
 #include "../ai/rag_retriever.h"
 #include "../learn/study_decks.h"
 #include "../learn/study_engine.h"
+#include "../health/health_tracker.h"
 #include <Arduino.h>
 #include <esp_heap_caps.h>
 #include <WiFi.h>
@@ -500,11 +501,86 @@ static esp_err_t handle_rag_query(httpd_req_t* req) {
     return httpd_resp_send(req, s.c_str(), s.length());
 }
 
+static void fill_health_json(JsonDocument& out) {
+    pet_state_lock();
+    const HealthState& hs = health_get_state();
+    uint32_t steps_day    = _pet ? _pet->stepsToday : 0;
+    uint32_t steps_tot    = _pet ? _pet->stepsTotal : 0;
+    uint32_t goal         = hs.stepGoal > 0 ? hs.stepGoal : 6000;
+    uint32_t pct          = (steps_day * 100UL) / goal;
+    if (pct > 100) pct = 100;
+
+    out["stepsToday"]          = steps_day;
+    out["stepsTotal"]          = steps_tot;
+    out["stepGoal"]            = hs.stepGoal;
+    out["goalPct"]             = pct;
+    out["goalStreakDays"]      = hs.goalStreakDays;
+    out["waterCupsToday"]      = hs.waterCupsToday;
+    out["waterGoalCups"]       = hs.waterGoalCups;
+    out["breatheSessions"]     = hs.breatheSessionsTotal;
+    out["remindersEnabled"]    = hs.remindersEnabled;
+    out["reminderIntervalMin"] = hs.reminderIntervalMin;
+    out["weekAvg"]             = health_week_avg_steps(steps_day);
+    JsonArray wk = out["weekSteps"].to<JsonArray>();
+    for (int i = 0; i < 7; i++) wk.add(hs.weekSteps[i]);
+    pet_state_unlock();
+}
+
+static esp_err_t handle_health_get(httpd_req_t* req) {
+    JsonDocument out;
+    fill_health_json(out);
+    String s;
+    serializeJson(out, s);
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_send(req, s.c_str(), s.length());
+}
+
+static esp_err_t handle_health_post(httpd_req_t* req) {
+    char body[256];
+    if (!read_req_body(req, body, sizeof(body))) {
+        return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Bad body");
+    }
+    JsonDocument doc;
+    if (deserializeJson(doc, body)) {
+        return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+    }
+
+    const char* act = doc["action"] | "";
+    bool logged_water = (strcmp(act, "water") == 0);
+    if (logged_water) {
+        pet_state_lock();
+        health_log_water(_pet, (int64_t)rtc_get_epoch());
+        zoo_save_state(_pet);
+        _dirty = true;
+        pet_state_unlock();
+        buzzer_play_async(MELODY_FEED, MELODY_FEED_LEN);
+        if (_ui_cb) _ui_cb("Water logged! Pet hydrated +10%!");
+    } else {
+        pet_state_lock();
+        const HealthState& cur = health_get_state();
+        uint32_t sg   = doc["stepGoal"] | cur.stepGoal;
+        uint8_t  wg   = (uint8_t)(doc["waterGoalCups"] | cur.waterGoalCups);
+        bool     rem  = doc["remindersEnabled"] | cur.remindersEnabled;
+        uint16_t rmin = (uint16_t)(doc["reminderIntervalMin"] | cur.reminderIntervalMin);
+        health_set_config(sg, wg, rem, rmin);
+        _dirty = true;
+        pet_state_unlock();
+    }
+
+    JsonDocument out;
+    out["ok"] = true;
+    fill_health_json(out);
+    String s;
+    serializeJson(out, s);
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_send(req, s.c_str(), s.length());
+}
+
 static void start_http_server() {
     if (_httpd) return;
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.stack_size = 8192;
-    config.max_uri_handlers = 16;
+    config.max_uri_handlers = 20;
     if (httpd_start(&_httpd, &config) != ESP_OK) return;
 
     const httpd_uri_t uris[] = {
@@ -519,6 +595,8 @@ static void start_http_server() {
         {"/api/config",       HTTP_POST, handle_config,           nullptr},
         {"/api/study",        HTTP_GET,  handle_study,            nullptr},
         {"/api/rag",          HTTP_POST, handle_rag_query,        nullptr},
+        {"/api/health",       HTTP_GET,  handle_health_get,       nullptr},
+        {"/api/health",       HTTP_POST, handle_health_post,      nullptr},
         {"/api/decks/custom", HTTP_GET,  handle_custom_deck_get,  nullptr},
         {"/api/decks/custom", HTTP_POST, handle_custom_deck_post, nullptr},
     };

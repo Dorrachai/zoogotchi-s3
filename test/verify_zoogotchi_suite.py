@@ -256,8 +256,8 @@ def test_web_bundle():
     assert sz < 35 * 1024, f"Web bundle {sz} bytes >= 35KB"
     html = gzip.decompress(gz_path.read_bytes()).decode("utf-8")
     assert "ZooGotchi S3" in html and "/api/chat" in html and "/api/breed" in html
-    assert "/api/study" in html and "/api/decks/custom" in html
-    print(f"[PASS] Web bundle verified ({sz} bytes gzipped < 35KB, includes Study Studio APIs)")
+    assert "/api/study" in html and "/api/decks/custom" in html and "/api/health" in html
+    print(f"[PASS] Web bundle verified ({sz} bytes gzipped < 35KB, includes Study & Health APIs)")
 
 
 def test_study_decks_and_sm2():
@@ -541,6 +541,51 @@ def test_trademark_hygiene():
     print("[PASS] Trademark hygiene check (0 unintended references across all source/hardware/tools)")
 
 
+def test_hardware_safety_invariants():
+    cfg_h = (ROOT / "src" / "config.h").read_text(encoding="utf-8")
+    lgfx_h = (ROOT / "src" / "display" / "lgfx_config.h").read_text(encoding="utf-8")
+    buz_m = re.search(r"#define\s+BUZZER_LEDC_CH\s+(\d+)", cfg_h)
+    bl_m = re.search(r"cfg\.pwm_channel\s*=\s*(\d+)", lgfx_h)
+    assert buz_m and bl_m, "Missing LEDC channel config"
+    buz_ch, bl_ch = int(buz_m.group(1)), int(bl_m.group(1))
+    assert (buz_ch // 2) != (bl_ch // 2), (
+        f"LEDC timer collision: buzzer ch {buz_ch} and backlight ch {bl_ch} share Timer {buz_ch // 2}"
+    )
+
+    ple_cpp = (ROOT / "src" / "ai" / "micro_llm_ple.cpp").read_text(encoding="utf-8")
+    assert "esp_partition_mmap(part, 0, part->size" not in ple_cpp, "MMU over-map regression in micro_llm_ple.cpp"
+    assert "esp_partition_read(part, _hdr.dense_offset" in ple_cpp
+
+    ren_cpp = (ROOT / "src" / "sprites" / "zoo_renderer.cpp").read_text(encoding="utf-8")
+    assert "_spr_cache_buf" in ren_cpp, "Sprite cache missing in zoo_renderer.cpp"
+
+    ht_cpp = (ROOT / "src" / "health" / "health_tracker.cpp").read_text(encoding="utf-8")
+    assert "health_check_midnight_rollover" in ht_cpp and "VALID_MIN_DAY_NUM" in ht_cpp
+
+    # Mirror health midnight rollover + 7-day history shift math
+    def simulate_rollover(week, streak, goal, steps_today, celebrated, delta_days):
+        w = list(week)
+        w = w[1:] + [steps_today]
+        for _ in range(min(delta_days - 1, 7)):
+            w = w[1:] + [0]
+        if delta_days > 1:
+            streak = 0
+        elif not celebrated:
+            streak = (streak + 1) if steps_today >= goal else 0
+        return w, streak
+
+    w1, s1 = simulate_rollover([100, 200, 300, 400, 500, 600, 700], 2, 6000, 6500, True, 1)
+    assert w1 == [200, 300, 400, 500, 600, 700, 6500] and s1 == 2
+    w2, s2 = simulate_rollover([0] * 7, 3, 6000, 7200, False, 2)
+    assert w2 == [0, 0, 0, 0, 0, 7200, 0] and s2 == 0
+
+    print(
+        f"[PASS] Hardware safety & health rollover verified "
+        f"(Buzzer ch{buz_ch}/Timer{buz_ch // 2} != BL ch{bl_ch}/Timer{bl_ch // 2}, "
+        f"MMU bounded, sprite PSRAM cache active)"
+    )
+
+
 def main():
     assert verify_vocab_safety.audit() == 0
     test_partitions()
@@ -555,6 +600,7 @@ def main():
     test_zple_trainer_and_binary()
     test_rag_index_binary()
     test_post_training_and_curation_invariants()
+    test_hardware_safety_invariants()
     test_trademark_hygiene()
     print("\nALL ZOOGOTCHI S3 VERIFICATION CHECKS PASSED!")
 

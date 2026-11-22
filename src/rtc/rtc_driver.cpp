@@ -133,18 +133,30 @@ void rtc_driver_sync_from_ntp(time_t epoch_utc) {
     Serial.printf("[rtc] Synced epoch=%lld\n", (long long)epoch_utc);
 }
 
-uint8_t rtc_get_hour(int16_t tz_offset_min) {
-    time_t local = rtc_get_epoch() + (time_t)tz_offset_min * 60L;
+void rtc_epoch_to_local_hm(time_t epoch_utc, int16_t tz_offset_min, uint8_t* out_hour, uint8_t* out_min) {
+    time_t local = epoch_utc + (time_t)tz_offset_min * 60L;
     struct tm t = {};
     gmtime_r(&local, &t);
-    return (uint8_t)t.tm_hour;
+    if (out_hour) *out_hour = (uint8_t)t.tm_hour;
+    if (out_min)  *out_min  = (uint8_t)t.tm_min;
+}
+
+uint32_t rtc_epoch_to_local_day(time_t epoch_utc, int16_t tz_offset_min) {
+    int64_t local = (int64_t)epoch_utc + (int64_t)tz_offset_min * 60LL;
+    if (local <= 0) return 0;
+    return (uint32_t)(local / 86400LL);
+}
+
+uint8_t rtc_get_hour(int16_t tz_offset_min) {
+    uint8_t hr = 0;
+    rtc_epoch_to_local_hm(rtc_get_epoch(), tz_offset_min, &hr, nullptr);
+    return hr;
 }
 
 uint8_t rtc_get_minute(int16_t tz_offset_min) {
-    time_t local = rtc_get_epoch() + (time_t)tz_offset_min * 60L;
-    struct tm t = {};
-    gmtime_r(&local, &t);
-    return (uint8_t)t.tm_min;
+    uint8_t mn = 0;
+    rtc_epoch_to_local_hm(rtc_get_epoch(), tz_offset_min, nullptr, &mn);
+    return mn;
 }
 
 void rtc_set_wakeup_minutes(uint16_t minutes) {

@@ -2,6 +2,7 @@
 #include "../zoo/zoo_engine.h"
 #include "../config_mgr/config_manager.h"
 #include "../learn/study_decks.h"
+#include "../health/health_tracker.h"
 #include <lvgl.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -24,6 +25,7 @@ enum class UiScreen : uint8_t {
     STUDY_HUB     = 10,
     QUIZ          = 11,
     FOCUS         = 12,
+    HEALTH        = 13,
 };
 
 struct UiCallbacks {
@@ -45,6 +47,11 @@ struct UiCallbacks {
     void (*onOpenFocus)();
     void (*onStartFocus)(uint16_t minutes);
     void (*onStopFocus)();
+    void (*onOpenHealth)();
+    void (*onLogWater)();
+    void (*onAdjustStepGoal)(int32_t delta);
+    void (*onToggleHealthReminders)();
+    void (*onToggleBreathe)();
 };
 
 void     ui_screens_init(const UiCallbacks& cbs);
@@ -63,5 +70,6 @@ void     ui_show_quiz_card(const char* deck_name, uint8_t q_num, uint8_t q_total
 void     ui_show_quiz_feedback(uint8_t picked_idx, uint8_t correct_idx, const char* takeaway);
 void     ui_refresh_focus(bool active, uint16_t duration_min, uint32_t rem_sec, uint8_t pct,
                           bool demo_speed, const char* pet_name);
+void     ui_refresh_health(const ZooPetState* pet, const HealthState* hs, const BreatheSnapshot* br);
 
 lv_obj_t* ui_minigame_parent();

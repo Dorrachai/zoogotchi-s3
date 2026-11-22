@@ -41,8 +41,10 @@ struct ZpleHeader {
 #pragma pack(pop)
 static_assert(sizeof(ZpleHeader) == 64, "ZpleHeader must be 64 bytes");
 
+static const esp_partition_t*     _ple_part       = nullptr;
 static const uint8_t*             _flash_mmap_ptr = nullptr;
 static spi_flash_mmap_handle_t    _flash_mmap_hdl = 0;
+static uint8_t*                   _ple_row_buf    = nullptr;
 static ZpleHeader                 _hdr            = {};
 static bool                       _model_loaded   = false;
 static volatile bool              _busy           = false;
@@ -159,16 +161,15 @@ static bool try_mount_zple_partition() {
         Serial.println("[llm] No llm_model partition found — fallback brain active");
         return false;
     }
-    if (esp_partition_mmap(part, 0, part->size, SPI_FLASH_MMAP_DATA,
-                           (const void**)&_flash_mmap_ptr, &_flash_mmap_hdl) != ESP_OK) {
-        Serial.println("[llm] mmap failed — fallback brain active");
+    if (esp_partition_read(part, 0, &_hdr, sizeof(ZpleHeader)) != ESP_OK) {
+        Serial.println("[llm] Partition read failed — fallback brain active");
         return false;
     }
 
-    memcpy(&_hdr, _flash_mmap_ptr, sizeof(ZpleHeader));
     if (memcmp(_hdr.magic, "ZPLE", 4) != 0 || _hdr.version != 1 ||
         _hdr.v_out != ZOO_VOUT_COUNT || _hdr.d_model == 0 || _hdr.n_layers == 0 ||
-        _hdr.total_bytes > part->size) {
+        _hdr.dense_offset < _hdr.ple_offset || _hdr.head_offset <= _hdr.dense_offset ||
+        _hdr.total_bytes <= _hdr.head_offset || _hdr.total_bytes > part->size) {
         Serial.println("[llm] llm_model empty or unprogrammed — using rich personality fallback");
         return false;
     }
@@ -177,6 +178,7 @@ static bool try_mount_zple_partition() {
     size_t head_sz  = _hdr.total_bytes - _hdr.head_offset;
     size_t kv_dim   = (_hdr.d_model * _hdr.n_kv_heads) / _hdr.n_heads;
     size_t kv_sz    = (size_t)_hdr.n_layers * _hdr.max_seq_len * kv_dim * sizeof(float);
+    size_t ple_row_bytes = (size_t)_hdr.n_layers * q4_matrix_bytes(1, _hdr.d_model, _hdr.group_size);
 
     _psram_dense = (uint8_t*)heap_caps_malloc(dense_sz, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     _psram_head  = (uint8_t*)heap_caps_malloc(head_sz,  MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
@@ -199,8 +201,25 @@ static bool try_mount_zple_partition() {
         return false;
     }
 
-    memcpy(_psram_dense, _flash_mmap_ptr + _hdr.dense_offset, dense_sz);
-    memcpy(_psram_head,  _flash_mmap_ptr + _hdr.head_offset,  head_sz);
+    if (esp_partition_read(part, _hdr.dense_offset, _psram_dense, dense_sz) != ESP_OK ||
+        esp_partition_read(part, _hdr.head_offset, _psram_head, head_sz) != ESP_OK) {
+        Serial.println("[llm] Weight copy to PSRAM failed — using fallback brain");
+        return false;
+    }
+
+    _ple_part = part;
+    // Map only the PLE Flash region (0..dense_offset ~= 1.62 MB) instead of the entire 10.35 MB partition
+    if (esp_partition_mmap(part, 0, _hdr.dense_offset, SPI_FLASH_MMAP_DATA,
+                           (const void**)&_flash_mmap_ptr, &_flash_mmap_hdl) != ESP_OK) {
+        _flash_mmap_ptr = nullptr;
+        _ple_row_buf    = (uint8_t*)malloc(ple_row_bytes);
+        if (!_ple_row_buf) {
+            Serial.println("[llm] PLE mmap & row buffer fallback failed — using personality fallback");
+            return false;
+        }
+        Serial.println("[llm] Using esp_partition_read fallback for PLE table");
+    }
+
     Serial.printf("[llm] ZPLE model mounted! d=%u L=%u v_in=%u v_out=%u\n",
                   _hdr.d_model, _hdr.n_layers, _hdr.v_in, _hdr.v_out);
     return true;
@@ -228,9 +247,18 @@ static bool ple_forward_step(uint16_t token_in, int pos, int max_out_logits, flo
     int kvd = hd * nkv;
     uint16_t gs = _hdr.group_size;
 
-    // Fetch token row from Flash mmap Per-Layer Embedding table
+    // Fetch token row from Flash mmap Per-Layer Embedding table (or partition read fallback)
     size_t ple_row_bytes = (size_t)_hdr.n_layers * q4_matrix_bytes(1, D, gs);
-    const uint8_t* ple_tok = _flash_mmap_ptr + _hdr.ple_offset + (size_t)(token_in % _hdr.v_in) * ple_row_bytes;
+    size_t ple_tok_off   = _hdr.ple_offset + (size_t)(token_in % _hdr.v_in) * ple_row_bytes;
+    const uint8_t* ple_tok = nullptr;
+    if (_flash_mmap_ptr) {
+        ple_tok = _flash_mmap_ptr + ple_tok_off;
+    } else if (_ple_part && _ple_row_buf &&
+               esp_partition_read(_ple_part, ple_tok_off, _ple_row_buf, ple_row_bytes) == ESP_OK) {
+        ple_tok = _ple_row_buf;
+    } else {
+        return false;
+    }
 
     // Seed x from layer-0 embedding row
     memset(_x, 0, D * sizeof(float));

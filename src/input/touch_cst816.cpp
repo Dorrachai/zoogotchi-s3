@@ -32,6 +32,7 @@ static bool     _long_fired     = false;
 static uint16_t _pet_travel_px  = 0;
 static uint32_t _last_pet_ms    = 0;
 
+static uint32_t _last_poll_ms   = 0;
 static lv_indev_t* _lv_indev    = nullptr;
 
 static void enqueue_event(TouchEventType t, int16_t x, int16_t y) {
@@ -113,11 +114,16 @@ void touch_cst816_register_lvgl() {
 void touch_cst816_update() {
     if (!_ready) return;
 
+    uint32_t now = millis();
+    uint32_t interval = _tracking ? 5UL : 20UL;
+    if ((now - _last_poll_ms) < interval) return;
+    _last_poll_ms = now;
+
     uint8_t pts = 0;
     int16_t rx = _cur_x, ry = _cur_y;
     if (!cst_read_raw(&pts, &rx, &ry)) return;
 
-    uint32_t now = millis();
+    now = millis();
     bool down = (pts > 0);
 
     if (down) {
