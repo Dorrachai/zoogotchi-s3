@@ -55,7 +55,7 @@ static bool        g_quiz_answered  = false;
 static uint32_t    g_quiz_adv_at_ms = 0;
 static uint8_t     g_quiz_correct   = 0;
 static uint16_t    g_quiz_coins     = 0;
-static char        g_quiz_last_term[28] = {};
+static char        g_quiz_last_term[48] = {};
 
 static volatile bool g_speech_pending = false;
 static char          g_speech_buf[140] = {};

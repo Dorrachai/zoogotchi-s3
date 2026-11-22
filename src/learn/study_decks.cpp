@@ -14,12 +14,24 @@
 // Custom Phone-Uploaded Deck (PSRAM-backed, /custom_deck.json)
 // =============================================================================
 struct CustomCardBuf {
-    char    prompt[96];
-    char    choices[4][32];
+    char    prompt[192];
+    char    choices[4][64];
     uint8_t correctIdx;
-    char    takeaway[84];
-    char    termTag[24];
+    char    takeaway[160];
+    char    termTag[48];
 };
+
+static void utf8_strlcpy(char* dst, const char* src, size_t dst_size) {
+    if (!dst || dst_size == 0) return;
+    if (!src) { dst[0] = '\0'; return; }
+    size_t n = strlcpy(dst, src, dst_size);
+    if (n >= dst_size) {
+        size_t end = dst_size - 1;
+        while (end > 0 && ((uint8_t)dst[end - 1] & 0xC0) == 0x80) end--;
+        if (end > 0 && ((uint8_t)dst[end - 1] & 0x80) != 0) end--;
+        dst[end] = '\0';
+    }
+}
 
 static CustomCardBuf* _custom_cards = nullptr;
 static uint8_t        _custom_count = 0;
@@ -102,14 +114,14 @@ bool study_custom_deck_reload() {
 
         CustomCardBuf& dst = _custom_cards[_custom_count];
         memset(&dst, 0, sizeof(dst));
-        strlcpy(dst.prompt, q, sizeof(dst.prompt));
+        utf8_strlcpy(dst.prompt, q, sizeof(dst.prompt));
         for (int i = 0; i < 4; i++) {
-            strlcpy(dst.choices[i], cs[i] | "-", sizeof(dst.choices[i]));
+            utf8_strlcpy(dst.choices[i], cs[i] | "-", sizeof(dst.choices[i]));
         }
         uint8_t a = (uint8_t)(o["a"] | 0);
         dst.correctIdx = a < 4 ? a : 0;
-        strlcpy(dst.takeaway, o["e"] | dst.choices[dst.correctIdx], sizeof(dst.takeaway));
-        strlcpy(dst.termTag,  o["t"] | dst.choices[dst.correctIdx], sizeof(dst.termTag));
+        utf8_strlcpy(dst.takeaway, o["e"] | dst.choices[dst.correctIdx], sizeof(dst.takeaway));
+        utf8_strlcpy(dst.termTag,  o["t"] | dst.choices[dst.correctIdx], sizeof(dst.termTag));
         _custom_count++;
     }
     Serial.printf("[study] Loaded %u custom cards\n", (unsigned)_custom_count);
@@ -117,7 +129,7 @@ bool study_custom_deck_reload() {
 }
 
 bool study_custom_deck_save_json(const char* json_str, size_t len) {
-    if (!json_str || len == 0 || len > 12288) return false;
+    if (!json_str || len == 0 || len > 24576) return false;
     JsonDocument doc;
     DeserializationError err = deserializeJson(doc, json_str, len);
     if (err || !doc["cards"].is<JsonArray>()) return false;

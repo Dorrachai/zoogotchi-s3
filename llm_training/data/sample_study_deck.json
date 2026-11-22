@@ -1,148 +1,148 @@
 {
   "cards": [
     {
-      "q": "[JLPT N2] Coin Change min coins DP?",
+      "q": "[N2] 傘(かさ)を忘(わす)れた日(ひ)___雨(あめ)が降(ふ)る。 (ironic 'just when')",
       "c": [
-        "Bottom-up 1D dp[a]",
-        "Greedy largest coin",
-        "Binary Search",
-        "Two Pointers"
+        "に限(かぎ)って",
+        "につれて",
+        "をもって",
+        "にかけて"
       ],
       "a": 0,
-      "e": "Greedy fails on [1,3,4], target=6; use dp[a]=min(dp[a],1+dp[a-c]).",
-      "t": "Coin Change DP"
+      "e": "〜に限(かぎ)って = ironically on that very day (Murphy's law).",
+      "t": "[N2] 〜に限(かぎ)って"
     },
     {
-      "q": "[JLPT N2] House Robber recurrence?",
+      "q": "[N2] 約束(やくそく)したから、休(やす)む___。 (moral duty)",
       "c": [
-        "max(rob1+n, rob2)",
-        "rob1 + rob2",
-        "sum(evens)",
-        "min(rob1, n)"
+        "わけにはいかない",
+        "わけがない",
+        "ことはない",
+        "はずがない"
       ],
       "a": 0,
-      "e": "Rolling 2-variable DP uses O(n) time and O(1) space.",
-      "t": "House Robber DP"
+      "e": "〜わけにはいかない = morally/socially unable to do X.",
+      "t": "[N2] わけにはいかない"
     },
     {
-      "q": "[JLPT N2] Validate BST invariant?",
+      "q": "[N1] あの侮辱(ぶじょく)は我慢(がまん)に___。 (unbearable)",
       "c": [
-        "low < node.val < high",
-        "left < node < right only",
-        "BFS height check",
-        "Sort tree"
+        "堪(た)えない",
+        "当(あ)たる",
+        "及(およ)ばない",
+        "しかない"
       ],
       "a": 0,
-      "e": "Pass narrowing (low, high) bounds down recursion.",
-      "t": "BST Bounds"
+      "e": "N/V + に堪(た)えない = intolerable / cannot endure (literary).",
+      "t": "[N1] 〜に堪(た)えない"
     },
     {
-      "q": "[JLPT N2] Coin Change min coins DP?",
+      "q": "[N2] 傘(かさ)を忘(わす)れた日(ひ)___雨(あめ)が降(ふ)る。 (ironic 'just when')",
       "c": [
-        "Bottom-up 1D dp[a]",
-        "Greedy largest coin",
-        "Binary Search",
-        "Two Pointers"
+        "に限(かぎ)って",
+        "につれて",
+        "をもって",
+        "にかけて"
       ],
       "a": 0,
-      "e": "Greedy fails on [1,3,4], target=6; use dp[a]=min(dp[a],1+dp[a-c]).",
-      "t": "Coin Change DP"
+      "e": "〜に限(かぎ)って = ironically on that very day (Murphy's law).",
+      "t": "[N2] 〜に限(かぎ)って"
     },
     {
-      "q": "[JLPT N2] House Robber recurrence?",
+      "q": "[N2] 約束(やくそく)したから、休(やす)む___。 (moral duty)",
       "c": [
-        "max(rob1+n, rob2)",
-        "rob1 + rob2",
-        "sum(evens)",
-        "min(rob1, n)"
+        "わけにはいかない",
+        "わけがない",
+        "ことはない",
+        "はずがない"
       ],
       "a": 0,
-      "e": "Rolling 2-variable DP uses O(n) time and O(1) space.",
-      "t": "House Robber DP"
+      "e": "〜わけにはいかない = morally/socially unable to do X.",
+      "t": "[N2] わけにはいかない"
     },
     {
-      "q": "[JLPT N2] Validate BST invariant?",
+      "q": "[N1] あの侮辱(ぶじょく)は我慢(がまん)に___。 (unbearable)",
       "c": [
-        "low < node.val < high",
-        "left < node < right only",
-        "BFS height check",
-        "Sort tree"
+        "堪(た)えない",
+        "当(あ)たる",
+        "及(およ)ばない",
+        "しかない"
       ],
       "a": 0,
-      "e": "Pass narrowing (low, high) bounds down recursion.",
-      "t": "BST Bounds"
+      "e": "N/V + に堪(た)えない = intolerable / cannot endure (literary).",
+      "t": "[N1] 〜に堪(た)えない"
     },
     {
-      "q": "[JLPT N2] Coin Change min coins DP?",
+      "q": "[N2] 傘(かさ)を忘(わす)れた日(ひ)___雨(あめ)が降(ふ)る。 (ironic 'just when')",
       "c": [
-        "Bottom-up 1D dp[a]",
-        "Greedy largest coin",
-        "Binary Search",
-        "Two Pointers"
+        "に限(かぎ)って",
+        "につれて",
+        "をもって",
+        "にかけて"
       ],
       "a": 0,
-      "e": "Greedy fails on [1,3,4], target=6; use dp[a]=min(dp[a],1+dp[a-c]).",
-      "t": "Coin Change DP"
+      "e": "〜に限(かぎ)って = ironically on that very day (Murphy's law).",
+      "t": "[N2] 〜に限(かぎ)って"
     },
     {
-      "q": "[JLPT N2] House Robber recurrence?",
+      "q": "[N2] 約束(やくそく)したから、休(やす)む___。 (moral duty)",
       "c": [
-        "max(rob1+n, rob2)",
-        "rob1 + rob2",
-        "sum(evens)",
-        "min(rob1, n)"
+        "わけにはいかない",
+        "わけがない",
+        "ことはない",
+        "はずがない"
       ],
       "a": 0,
-      "e": "Rolling 2-variable DP uses O(n) time and O(1) space.",
-      "t": "House Robber DP"
+      "e": "〜わけにはいかない = morally/socially unable to do X.",
+      "t": "[N2] わけにはいかない"
     },
     {
-      "q": "[JLPT N2] Validate BST invariant?",
+      "q": "[N1] あの侮辱(ぶじょく)は我慢(がまん)に___。 (unbearable)",
       "c": [
-        "low < node.val < high",
-        "left < node < right only",
-        "BFS height check",
-        "Sort tree"
+        "堪(た)えない",
+        "当(あ)たる",
+        "及(およ)ばない",
+        "しかない"
       ],
       "a": 0,
-      "e": "Pass narrowing (low, high) bounds down recursion.",
-      "t": "BST Bounds"
+      "e": "N/V + に堪(た)えない = intolerable / cannot endure (literary).",
+      "t": "[N1] 〜に堪(た)えない"
     },
     {
-      "q": "[JLPT N2] Coin Change min coins DP?",
+      "q": "[N2] 傘(かさ)を忘(わす)れた日(ひ)___雨(あめ)が降(ふ)る。 (ironic 'just when')",
       "c": [
-        "Bottom-up 1D dp[a]",
-        "Greedy largest coin",
-        "Binary Search",
-        "Two Pointers"
+        "に限(かぎ)って",
+        "につれて",
+        "をもって",
+        "にかけて"
       ],
       "a": 0,
-      "e": "Greedy fails on [1,3,4], target=6; use dp[a]=min(dp[a],1+dp[a-c]).",
-      "t": "Coin Change DP"
+      "e": "〜に限(かぎ)って = ironically on that very day (Murphy's law).",
+      "t": "[N2] 〜に限(かぎ)って"
     },
     {
-      "q": "[JLPT N2] House Robber recurrence?",
+      "q": "[N2] 約束(やくそく)したから、休(やす)む___。 (moral duty)",
       "c": [
-        "max(rob1+n, rob2)",
-        "rob1 + rob2",
-        "sum(evens)",
-        "min(rob1, n)"
+        "わけにはいかない",
+        "わけがない",
+        "ことはない",
+        "はずがない"
       ],
       "a": 0,
-      "e": "Rolling 2-variable DP uses O(n) time and O(1) space.",
-      "t": "House Robber DP"
+      "e": "〜わけにはいかない = morally/socially unable to do X.",
+      "t": "[N2] わけにはいかない"
     },
     {
-      "q": "[JLPT N2] Validate BST invariant?",
+      "q": "[N1] あの侮辱(ぶじょく)は我慢(がまん)に___。 (unbearable)",
       "c": [
-        "low < node.val < high",
-        "left < node < right only",
-        "BFS height check",
-        "Sort tree"
+        "堪(た)えない",
+        "当(あ)たる",
+        "及(およ)ばない",
+        "しかない"
       ],
       "a": 0,
-      "e": "Pass narrowing (low, high) bounds down recursion.",
-      "t": "BST Bounds"
+      "e": "N/V + に堪(た)えない = intolerable / cannot endure (literary).",
+      "t": "[N1] 〜に堪(た)えない"
     }
   ]
 }

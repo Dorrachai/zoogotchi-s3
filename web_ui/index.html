@@ -109,7 +109,7 @@ nav button.on{color:var(--accent);background:var(--soft)}
       <strong>On-Device Knowledge Search (BM25 RAG)</strong>
       <p class="small" style="margin:6px 0">Search flash/PSRAM index (/rag/kb.bin): biology, JLPT, NeetCode, hardware.</p>
       <div class="row" style="flex-wrap:nowrap">
-        <input id="ragIn" maxlength="80" placeholder="e.g. manatee seagrass, ~ni kagitte, sliding window..." onkeydown="if(event.key==='Enter')searchRag()">
+        <input id="ragIn" maxlength="80" placeholder="e.g. manatee seagrass, に限って, sliding window..." onkeydown="if(event.key==='Enter')searchRag()">
         <button onclick="searchRag()">Search</button>
       </div>
       <div id="ragRes" class="small" style="margin-top:8px"></div>
@@ -269,14 +269,14 @@ function loadNeetCodePack(){
 }
 function loadJlptPack(){
   $('deckInput').value=[
-    "[N2] 'Kotoshi wa kyonen ___ atsui.' Even more than last year? | ni mo mashite | ni kakete | ni kawatte | wo towazu | ~ni mo mashite = even more than / above and beyond",
-    "[N2] 'Haru ___ kyuu ni samuku natta.' Sudden unexpected turn? | ka to omoikiya | ni kagirazu | to shitara | wo motte | ~ka to omoikiya = contrary to expectation, sudden turn",
-    "[N1] 'Sonna uwasa wa shinjiru ___.' Not worth considering? | ni tarinai | ni taenai | made mo nai | beku mo nai | ~ni tarinai = not worth / below the bar to care",
-    "[N1] 'Ima sara koukai suru ___.' Nothing can be done about it? | beku mo nai | kagiri da | mono to suru | to atte | ~beku mo nai = cannot possibly be expected to happen",
-    "[N1] 'Kono ruuru wa genba ___ tsukurareta.' Aligned with facts? | ni sokushite | ni tsuki | wo hete | ni itaru made | ~ni sokushite = closely grounded in actual reality/facts",
-    "[N2] 'Kyou ___ mise wo shimemasu.' Effective ending today? | wo kagiri ni | wo kawakiri ni | ni watatte | wo towazu | ~wo kagiri ni = with today as the final boundary/limit",
-    "[N1] 'Kikoku shite ___ mainichi isogashii.' Ever since X happened? | kara to iu mono | ni kagirazu | to shitara | made mo naku | ~te kara to iu mono = continuously ever since X occurred",
-    "[N2] Vocab: 'Kare no iken ni ___ suru.' Formal 'oppose/object'? | hantai | sansei | kyouryoku | kyoka | Hantai = opposition; contrast with sansei (agree)"
+    "[N2] 今年(ことし)は去年(きょねん)___暑(あつ)い。 (even more than) | にもまして | にかけて | に代(か)わって | を問(と)わず | 〜にもまして = even more than / above and beyond",
+    "[N2] 春(はる)___急(きゅう)に寒(さむ)くなった。 (sudden turn) | かと思(おも)いきや | に限(かぎ)らず | としたら | をもって | 〜かと思(おも)いきや = contrary to expectation, sudden turn",
+    "[N1] そんな噂(うわさ)は信(しん)じる___。 (not worth) | に足(た)りない | に堪(た)えない | までもない | べくもない | 〜に足(た)りない = not worth / below the bar to care",
+    "[N1] 今更(いまさら)後悔(こうかい)する___。 (cannot possibly) | べくもない | 限(かぎ)りだ | ものとする | とあって | 〜べくもない = cannot possibly be expected to happen",
+    "[N1] このルールは現場(げんば)___作(つく)られた。 (aligned w/ facts) | に即(そく)して | につき | を経(へ)て | に至(いた)るまで | 〜に即(そく)して = closely grounded in actual reality/facts",
+    "[N2] 今日(きょう)___店(みせ)を閉(し)めます。 (ending today) | を限(かぎ)りに | を皮切(かわき)りに | にわたって | を問(と)わず | 〜を限(かぎ)りに = with today as the final boundary/limit",
+    "[N1] 帰国(きこく)して___毎日(まいにち)忙(いそが)しい。 (ever since) | からというもの | に限(かぎ)らず | としたら | までもなく | 〜てからというもの = continuously ever since X occurred",
+    "[N2] 語彙(ごい): 彼(かれ)の意見(いけん)に___する。 (oppose) | 反対(はんたい) | 賛成(さんせい) | 協力(きょうりょく) | 許可(きょか) | 反対(はんたい) = opposition; contrast with 賛成(さんせい) (agree)"
   ].join('\n');
 }
 async function uploadCustomDeck(){
@@ -285,7 +285,7 @@ async function uploadCustomDeck(){
   for(const ln of lines){
     const p=ln.split('|').map(x=>x.trim());
     if(p.length>=5){
-      cards.push({q:p[0].slice(0,88),c:[p[1].slice(0,24),p[2].slice(0,24),p[3].slice(0,24),p[4].slice(0,24)],a:0,e:(p[5]||p[1]).slice(0,76),t:p[1].slice(0,22)});
+      cards.push({q:p[0].slice(0,72),c:[p[1].slice(0,24),p[2].slice(0,24),p[3].slice(0,24),p[4].slice(0,24)],a:0,e:(p[5]||p[1]).slice(0,80),t:p[1].slice(0,20)});
     }
   }
   if(!cards.length){$('deckMsg').textContent='Need >=1 valid pipe line';return;}

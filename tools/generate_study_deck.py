@@ -34,6 +34,34 @@ def _load_dotenv(env_path: Path):
 
 
 def make_offline_sample_deck(topic: str, count: int) -> dict:
+    low = topic.lower()
+    if any(k in low for k in ("jp", "jlpt", "japanese")):
+        samples = [
+            {
+                "q": "[N2] 傘(かさ)を忘(わす)れた日(ひ)___雨(あめ)が降(ふ)る。 (ironic 'just when')",
+                "c": ["に限(かぎ)って", "につれて", "をもって", "にかけて"],
+                "a": 0,
+                "e": "〜に限(かぎ)って = ironically on that very day (Murphy's law).",
+                "t": "[N2] 〜に限(かぎ)って",
+            },
+            {
+                "q": "[N2] 約束(やくそく)したから、休(やす)む___。 (moral duty)",
+                "c": ["わけにはいかない", "わけがない", "ことはない", "はずがない"],
+                "a": 0,
+                "e": "〜わけにはいかない = morally/socially unable to do X.",
+                "t": "[N2] わけにはいかない",
+            },
+            {
+                "q": "[N1] あの侮辱(ぶじょく)は我慢(がまん)に___。 (unbearable)",
+                "c": ["堪(た)えない", "当(あ)たる", "及(およ)ばない", "しかない"],
+                "a": 0,
+                "e": "N/V + に堪(た)えない = intolerable / cannot endure (literary).",
+                "t": "[N1] 〜に堪(た)えない",
+            },
+        ]
+        cards = [samples[i % len(samples)] for i in range(min(count, 40))]
+        return {"cards": cards}
+
     samples = [
         {
             "q": f"[{topic[:20]}] Coin Change min coins DP?",
@@ -74,8 +102,10 @@ def generate_live_deck(topic: str, count: int) -> dict:
     client = genai.Client(api_key=api_key)
     prompt = (
         f"Create {min(count, 40)} concise multiple-choice study flashcards on '{topic}'. "
-        "Strictly ASCII text only. q <= 84 chars, each of 4 choices c <= 24 chars, "
-        "a is integer 0..3, e is 1-line takeaway <= 74 chars, t is <= 20 char tag. "
+        "For Japanese topics, use natural Japanese (kanji + kana) with inline furigana like 漢字(かんじ) "
+        "and NEVER use romaji. For non-Japanese topics, use clean ASCII text. "
+        "Keep q <= 72 chars (<= 180 UTF-8 bytes), each of 4 choices c <= 24 chars, "
+        "a is integer 0..3, e is 1-line takeaway <= 80 chars, t is <= 20 char tag. "
         "Return strict JSON matching the requested schema."
     )
     schema = {
@@ -127,11 +157,11 @@ def main():
     deck = make_offline_sample_deck(args.topic, args.count) if args.dry_run else generate_live_deck(args.topic, args.count)
     for card in deck["cards"]:
         assert len(card["c"]) == 4 and 0 <= int(card["a"]) <= 3
-        assert len(card["q"]) <= 95
+        assert len(card["q"].encode("utf-8")) <= 191
 
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(json.dumps(deck, indent=2), encoding="utf-8")
+    out_path.write_text(json.dumps(deck, indent=2, ensure_ascii=False), encoding="utf-8")
     print(f"{'DRY-RUN PASS' if args.dry_run else 'GENERATED'}: {len(deck['cards'])} cards -> {out_path}")
 
 

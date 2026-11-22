@@ -47,17 +47,36 @@ SYNONYM_MAP = {
     "sea": "water lagoon",
     "cow": "manatee",
     "temperature": "temp warm 20c",
-    "humble": "kenjougo itasu",
-    "eat": "meshiagaru food treat",
+    "humble": "いたす 謙譲語",
+    "eat": "召し上がり food treat",
     "contagious": "window",
     "japanese": "n4 n3 n2 n1 jlpt",
     "interview": "leetcode big-o",
 }
 
+_FURIGANA_PAREN_RE = re.compile(r"\(([ぁ-んー]+)\)")
+_JP_SEQ_RE = re.compile(r"[\u3041-\u3096\u30a1-\u30fa\u30fc\u4e00-\u9fff]+")
+
+
+def _extract_jp_tokens(text: str) -> list[str]:
+    out = []
+    stripped = _FURIGANA_PAREN_RE.sub("", text)
+    for seq in _JP_SEQ_RE.findall(stripped):
+        for idx, ch in enumerate(seq):
+            if 0x4E00 <= ord(ch) <= 0x9FFF:
+                out.append(ch)
+            if idx + 1 < len(seq):
+                out.append(seq[idx : idx + 2])
+    for furi in _FURIGANA_PAREN_RE.findall(text):
+        for idx in range(len(furi) - 1):
+            out.append(furi[idx : idx + 2])
+    return out
+
 
 def tokenize_sparse(text: str) -> list[str]:
-    toks = [m.lower() for m in re.findall(r"[A-Za-z0-9]+", text)]
-    return [t for t in toks if len(t) >= 2 and t not in STOPWORDS]
+    toks = [m.lower() for m in re.findall(r"[A-Za-z0-9]+", text) if len(m) >= 2 and m.lower() not in STOPWORDS]
+    toks.extend(_extract_jp_tokens(text))
+    return toks
 
 
 def tokenize_dense(text: str) -> list[str]:
@@ -66,9 +85,8 @@ def tokenize_dense(text: str) -> list[str]:
     for w in words:
         if w in SYNONYM_MAP:
             expanded.extend(SYNONYM_MAP[w].split())
-    grams = list(expanded)
+    grams = list(expanded) + _extract_jp_tokens(" ".join(expanded) + " " + text)
     # Character 3-grams for morphological/paraphrase resilience
-    joined = " ".join(expanded)
     for w in expanded:
         if len(w) >= 4:
             for i in range(len(w) - 2):
@@ -240,14 +258,14 @@ def get_eval_queries(domain: str, docs: list[dict]) -> list[tuple[str, set[str]]
         ("dijkstra shortest path heap log v", {"ZOO-059"}),
         ("top k frequent elements bucket sort o(n)", {"ZOO-041"}),
         ("merge sort worst case space complexity", {"ZOO-056"}),
-        ("jlpt n4 te shimau accidental regret completion", {"ZOO-062"}),
-        ("japanese intransitive aku vs transitive akeru", {"ZOO-064"}),
-        ("jlpt n3 wake de wa nai partial negation", {"ZOO-066"}),
-        ("jlpt n3 sei de blame vs okage de thanks", {"ZOO-068"}),
-        ("jlpt n2 ni kagitte murphys law irony", {"ZOO-075"}),
-        ("jlpt n2 wake ni wa ikanai moral duty", {"ZOO-074"}),
-        ("jlpt n2 keigo humble form itasu vs nasaru", {"ZOO-082"}),
-        ("japanese contradiction mujun compromise dakyou", {"ZOO-084", "ZOO-085"}),
+        ("jlpt n4 〜てしまう accidental regret completion", {"ZOO-062"}),
+        ("japanese intransitive 開く vs transitive 開ける", {"ZOO-064"}),
+        ("jlpt n3 〜わけではない partial negation", {"ZOO-066"}),
+        ("jlpt n3 せいで blame vs おかげで thanks", {"ZOO-068"}),
+        ("jlpt n2 〜に限って murphy law irony", {"ZOO-075"}),
+        ("jlpt n2 〜わけにはいかない moral duty", {"ZOO-074"}),
+        ("jlpt n2 keigo humble form いたす honorific", {"ZOO-082"}),
+        ("japanese contradiction 矛盾 compromise 妥協", {"ZOO-084", "ZOO-085"}),
         ("mx1.25 lipo polarity rechargeable ml414 rtc cell", {"ZOO-104"}),
         ("three layer safety v_out guardrails ple", {"ZOO-107"}),
     ]

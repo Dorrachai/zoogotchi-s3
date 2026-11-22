@@ -11,9 +11,9 @@ struct RagHit {
     uint16_t chunkId;
     uint8_t  category; // 0=species, 1=dsa, 2=jlpt, 3=genetics, 4=care
     float    score;
-    char     title[28];
-    char     tag[24];
-    char     snippet[128];
+    char     title[40];
+    char     tag[36];
+    char     snippet[160];
 };
 
 bool     rag_init();

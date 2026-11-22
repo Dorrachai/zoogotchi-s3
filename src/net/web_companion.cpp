@@ -238,9 +238,9 @@ static esp_err_t handle_chat(httpd_req_t* req) {
     RagHit rhit = {};
     const SpeciesProfile& sp = species_get(snap_pet.speciesId);
     if (rag_is_ready() && rag_query(msg, sp.slug, &rhit, 1) > 0 && rhit.score >= 1.2f) {
-        char tesc[64];
+        char tesc[96];
         json_escape(rhit.title, tesc, sizeof(tesc));
-        char rline[128];
+        char rline[160];
         snprintf(rline, sizeof(rline), "data: {\"rag\":\"%s\",\"score\":%.2f}\n\n",
                  tesc, (double)rhit.score);
         httpd_resp_send_chunk(req, rline, strlen(rline));
@@ -435,8 +435,8 @@ static esp_err_t handle_custom_deck_get(httpd_req_t* req) {
 
 static esp_err_t handle_custom_deck_post(httpd_req_t* req) {
     int total = req->content_len;
-    if (total <= 0 || total > 12288) {
-        return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Deck size must be 1..12288 bytes");
+    if (total <= 0 || total > 24576) {
+        return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Deck size must be 1..24576 bytes");
     }
     char* buf = (char*)heap_caps_malloc((size_t)total + 1, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     if (!buf) buf = (char*)malloc((size_t)total + 1);

@@ -1,4 +1,5 @@
 #include "ui_screens.h"
+#include "zoo_fonts.h"
 #include "../config.h"
 #include "../sprites/zoo_renderer.h"
 #include "../learn/study_engine.h"
@@ -283,7 +284,7 @@ static void build_home_screen() {
     lv_obj_set_width(_bubble_lbl, 196);
     lv_label_set_long_mode(_bubble_lbl, LV_LABEL_LONG_WRAP);
     lv_obj_set_style_text_color(_bubble_lbl, lv_color_hex(0x1E293B), 0);
-    lv_obj_set_style_text_font(_bubble_lbl, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_font(_bubble_lbl, &zoo_font_jp_12, 0);
     lv_label_set_text(_bubble_lbl, "");
 }
 
@@ -489,8 +490,8 @@ static void build_quiz_screen() {
              [](lv_event_t*) { ui_show_screen(UiScreen::STUDY_HUB); }, nullptr);
 
     lv_obj_t* qcard = lv_obj_create(_scr_quiz);
-    lv_obj_set_pos(qcard, 14, 36);
-    lv_obj_set_size(qcard, 212, 66);
+    lv_obj_set_pos(qcard, 14, 34);
+    lv_obj_set_size(qcard, 212, 74);
     lv_obj_set_style_bg_color(qcard, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_radius(qcard, 12, 0);
     lv_obj_set_style_border_width(qcard, 1, 0);
@@ -502,18 +503,22 @@ static void build_quiz_screen() {
     lv_obj_set_width(_qz_prompt, 198);
     lv_label_set_long_mode(_qz_prompt, LV_LABEL_LONG_WRAP);
     lv_obj_set_style_text_color(_qz_prompt, lv_color_hex(0x1E293B), 0);
-    lv_obj_set_style_text_font(_qz_prompt, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_font(_qz_prompt, &zoo_font_jp_12, 0);
     lv_label_set_text(_qz_prompt, "");
 
     for (uint8_t i = 0; i < 4; i++) {
-        _qz_btn[i] = make_btn(_scr_quiz, 16, 108 + i * 38, 208, 34, 0xFFFFFF, 0x1E293B,
+        _qz_btn[i] = make_btn(_scr_quiz, 16, 112 + i * 37, 208, 33, 0xFFFFFF, 0x1E293B,
                               "Choice", quiz_choice_cb, (void*)(uintptr_t)i, &_qz_btn_lbl[i]);
+        lv_obj_set_style_text_font(_qz_btn_lbl[i], &zoo_font_jp_12, 0);
+        lv_label_set_long_mode(_qz_btn_lbl[i], LV_LABEL_LONG_WRAP);
+        lv_obj_set_width(_qz_btn_lbl[i], 198);
+        lv_obj_set_style_text_align(_qz_btn_lbl[i], LV_TEXT_ALIGN_CENTER, 0);
     }
 
     // Takeaway / Next feedback bar overlaid on bottom of prompt when answered
     _qz_fb_box = lv_obj_create(_scr_quiz);
-    lv_obj_set_pos(_qz_fb_box, 14, 36);
-    lv_obj_set_size(_qz_fb_box, 212, 66);
+    lv_obj_set_pos(_qz_fb_box, 14, 34);
+    lv_obj_set_size(_qz_fb_box, 212, 74);
     lv_obj_set_style_bg_color(_qz_fb_box, lv_color_hex(0x1E293B), 0);
     lv_obj_set_style_radius(_qz_fb_box, 12, 0);
     lv_obj_set_style_pad_all(_qz_fb_box, 6, 0);
@@ -525,7 +530,7 @@ static void build_quiz_screen() {
     lv_obj_set_width(_qz_fb_lbl, 198);
     lv_label_set_long_mode(_qz_fb_lbl, LV_LABEL_LONG_WRAP);
     lv_obj_set_style_text_color(_qz_fb_lbl, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_text_font(_qz_fb_lbl, &lv_font_montserrat_10, 0);
+    lv_obj_set_style_text_font(_qz_fb_lbl, &zoo_font_jp_12, 0);
     lv_label_set_text(_qz_fb_lbl, "");
 }
 

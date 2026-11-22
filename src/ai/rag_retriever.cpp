@@ -26,9 +26,9 @@ struct RagChunkRec {
     uint16_t id;
     uint8_t  cat;
     uint8_t  doc_len;
-    char     title[28];
-    char     tag[24];
-    char     snippet[128];
+    char     title[40];
+    char     tag[36];
+    char     snippet[160];
 };
 
 struct RagTermRec {
@@ -46,13 +46,25 @@ struct RagPostingRec {
 #pragma pack(pop)
 
 static_assert(sizeof(ZragHeader) == 36,    "ZragHeader must be 36 bytes");
-static_assert(sizeof(RagChunkRec) == 184,  "RagChunkRec must be 184 bytes");
+static_assert(sizeof(RagChunkRec) == 240,  "RagChunkRec must be 240 bytes");
 static_assert(sizeof(RagTermRec) == 12,    "RagTermRec must be 12 bytes");
 static_assert(sizeof(RagPostingRec) == 4,  "RagPostingRec must be 4 bytes");
 
 static uint8_t*   _zrag_buf = nullptr;
 static ZragHeader _hdr      = {};
 static bool       _ready    = false;
+
+static void utf8_strlcpy(char* dst, const char* src, size_t dst_size) {
+    if (!dst || dst_size == 0) return;
+    if (!src) { dst[0] = '\0'; return; }
+    size_t n = strlcpy(dst, src, dst_size);
+    if (n >= dst_size) {
+        size_t end = dst_size - 1;
+        while (end > 0 && ((uint8_t)dst[end - 1] & 0xC0) == 0x80) end--;
+        if (end > 0 && ((uint8_t)dst[end - 1] & 0x80) != 0) end--;
+        dst[end] = '\0';
+    }
+}
 
 static uint32_t ieee_crc32(const uint8_t* data, size_t len) {
     uint32_t crc = 0xFFFFFFFFUL;
@@ -77,6 +89,27 @@ static uint32_t fnv1a_lower(const char* s, size_t len) {
     return h;
 }
 
+static bool decode_utf8_3(const char* s, uint32_t* out_cp) {
+    uint8_t b0 = (uint8_t)s[0];
+    if ((b0 & 0xF0) != 0xE0) return false;
+    uint8_t b1 = (uint8_t)s[1];
+    uint8_t b2 = (uint8_t)s[2];
+    if ((b1 & 0xC0) != 0x80 || (b2 & 0xC0) != 0x80) return false;
+    *out_cp = ((uint32_t)(b0 & 0x0F) << 12) | ((uint32_t)(b1 & 0x3F) << 6) | (uint32_t)(b2 & 0x3F);
+    return true;
+}
+
+static bool is_jp_kanji(uint32_t cp) {
+    return cp >= 0x4E00UL && cp <= 0x9FFFUL;
+}
+
+static bool is_jp_char(uint32_t cp) {
+    return (cp >= 0x3041UL && cp <= 0x3096UL) ||
+           (cp >= 0x30A1UL && cp <= 0x30FAUL) ||
+           cp == 0x30FCUL ||
+           is_jp_kanji(cp);
+}
+
 static const RagTermRec* bsearch_term(uint32_t h) {
     const RagTermRec* terms = reinterpret_cast<const RagTermRec*>(_zrag_buf + _hdr.term_off);
     int32_t lo = 0;
@@ -89,6 +122,35 @@ static const RagTermRec* bsearch_term(uint32_t h) {
         else        hi = mid - 1;
     }
     return nullptr;
+}
+
+static void score_term_hash(uint32_t h, uint32_t* seen_hashes, uint8_t* seen_cnt,
+                            uint16_t n_chunks, const RagChunkRec* chunks,
+                            float avg_dl, float* scores) {
+    if (*seen_cnt >= 32) return;
+    for (uint8_t s = 0; s < *seen_cnt; s++) {
+        if (seen_hashes[s] == h) return;
+    }
+    seen_hashes[(*seen_cnt)++] = h;
+
+    const RagTermRec* term = bsearch_term(h);
+    if (!term) return;
+    if ((size_t)_hdr.post_off + term->post_off + (size_t)term->post_cnt * sizeof(RagPostingRec) > _hdr.total_bytes) {
+        return;
+    }
+
+    const RagPostingRec* posts = reinterpret_cast<const RagPostingRec*>(
+        _zrag_buf + _hdr.post_off + term->post_off);
+    float idf = (float)term->idf_x100 / 100.0f;
+
+    for (uint16_t p = 0; p < term->post_cnt; p++) {
+        uint16_t cid = posts[p].chunk_id;
+        if (cid >= n_chunks) continue;
+        float tf = (float)posts[p].tf;
+        float dl = (float)chunks[cid].doc_len;
+        float denom = tf + 1.2f * (0.25f + 0.75f * (dl / avg_dl));
+        scores[cid] += idf * ((tf * 2.2f) / denom);
+    }
 }
 
 bool rag_init() {
@@ -165,50 +227,50 @@ uint8_t rag_query(const char* query, const char* species_slug,
     if (avg_dl < 1.0f) avg_dl = 1.0f;
 
     const RagChunkRec* chunks = reinterpret_cast<const RagChunkRec*>(_zrag_buf + _hdr.chunk_off);
-    uint32_t seen_hashes[16] = {};
+    uint32_t seen_hashes[32] = {};
     uint8_t  seen_cnt = 0;
 
-    // Scan contiguous ASCII alphanumeric tokens
+    // Scan both ASCII alphanumeric words and UTF-8 Japanese Kanji/Kana bigrams
     size_t i = 0;
-    while (query[i] && seen_cnt < 16) {
-        while (query[i] && !isalnum((unsigned char)query[i])) i++;
-        if (!query[i]) break;
-        size_t start = i;
-        while (query[i] && isalnum((unsigned char)query[i])) i++;
-        size_t tok_len = i - start;
-        if (tok_len < 2) continue;
-
-        uint32_t h = fnv1a_lower(query + start, tok_len);
-        bool dup = false;
-        for (uint8_t s = 0; s < seen_cnt; s++) {
-            if (seen_hashes[s] == h) { dup = true; break; }
-        }
-        if (dup) continue;
-        seen_hashes[seen_cnt++] = h;
-
-        const RagTermRec* term = bsearch_term(h);
-        if (!term) continue;
-        if ((size_t)_hdr.post_off + term->post_off + (size_t)term->post_cnt * sizeof(RagPostingRec) > _hdr.total_bytes) {
+    while (query[i] && seen_cnt < 32) {
+        unsigned char c = (unsigned char)query[i];
+        if (isalnum(c)) {
+            size_t start = i;
+            while (query[i] && isalnum((unsigned char)query[i])) i++;
+            size_t tok_len = i - start;
+            if (tok_len >= 2) {
+                uint32_t h = fnv1a_lower(query + start, tok_len);
+                score_term_hash(h, seen_hashes, &seen_cnt, n_chunks, chunks, avg_dl, scores);
+            }
             continue;
         }
-
-        const RagPostingRec* posts = reinterpret_cast<const RagPostingRec*>(
-            _zrag_buf + _hdr.post_off + term->post_off);
-        float idf = (float)term->idf_x100 / 100.0f;
-
-        for (uint16_t p = 0; p < term->post_cnt; p++) {
-            uint16_t cid = posts[p].chunk_id;
-            if (cid >= n_chunks) continue;
-            float tf = (float)posts[p].tf;
-            float dl = (float)chunks[cid].doc_len;
-            float denom = tf + 1.2f * (0.25f + 0.75f * (dl / avg_dl));
-            scores[cid] += idf * ((tf * 2.2f) / denom);
+        uint32_t cp = 0;
+        if (c >= 0xE0 && query[i + 1] && query[i + 2] && decode_utf8_3(query + i, &cp) && is_jp_char(cp)) {
+            size_t prev_off = SIZE_MAX;
+            while (query[i] && (unsigned char)query[i] >= 0xE0 &&
+                   query[i + 1] && query[i + 2] && decode_utf8_3(query + i, &cp) && is_jp_char(cp)) {
+                if (is_jp_kanji(cp)) {
+                    uint32_t hk = fnv1a_lower(query + i, 3);
+                    score_term_hash(hk, seen_hashes, &seen_cnt, n_chunks, chunks, avg_dl, scores);
+                }
+                if (prev_off != SIZE_MAX) {
+                    char bg[6];
+                    memcpy(bg, query + prev_off, 3);
+                    memcpy(bg + 3, query + i, 3);
+                    uint32_t hb = fnv1a_lower(bg, 6);
+                    score_term_hash(hb, seen_hashes, &seen_cnt, n_chunks, chunks, avg_dl, scores);
+                }
+                prev_off = i;
+                i += 3;
+            }
+            continue;
         }
+        i++;
     }
 
     // Light +0.35 species-tag relevance boost on matched chunks
     if (species_slug && species_slug[0]) {
-        char sp_tag[28];
+        char sp_tag[40];
         snprintf(sp_tag, sizeof(sp_tag), "species:%s", species_slug);
         for (uint16_t c = 0; c < n_chunks; c++) {
             if (scores[c] > 0.0f && strncmp(chunks[c].tag, sp_tag, sizeof(chunks[c].tag)) == 0) {
@@ -234,9 +296,9 @@ uint8_t rag_query(const char* query, const char* species_slug,
         dst.chunkId  = (uint16_t)best_id;
         dst.category = chunks[best_id].cat;
         dst.score    = best_sc;
-        strlcpy(dst.title,   chunks[best_id].title,   sizeof(dst.title));
-        strlcpy(dst.tag,     chunks[best_id].tag,     sizeof(dst.tag));
-        strlcpy(dst.snippet, chunks[best_id].snippet, sizeof(dst.snippet));
+        utf8_strlcpy(dst.title,   chunks[best_id].title,   sizeof(dst.title));
+        utf8_strlcpy(dst.tag,     chunks[best_id].tag,     sizeof(dst.tag));
+        utf8_strlcpy(dst.snippet, chunks[best_id].snippet, sizeof(dst.snippet));
         scores[best_id] = -1.0f;
     }
 

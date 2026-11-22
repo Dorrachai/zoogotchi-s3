@@ -23,7 +23,7 @@ struct PetMemory {
     uint32_t   totalChats;
     char       favoriteFood[24];
     char       lastAction[24];
-    char       lastLearned[28];
+    char       lastLearned[48];
     uint8_t    diaryCount;
     DiaryEntry diary[DIARY_MAX_ENTRIES];
 };

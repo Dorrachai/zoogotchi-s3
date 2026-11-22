@@ -10,7 +10,7 @@ Binary format ("ZRAG" v1):
   Header (36B, <4sI4H5I):
     magic="ZRAG", version=1, num_chunks, num_terms, avg_dl_x100, reserved=0,
     chunk_off, term_off, post_off, total_bytes, crc32(data[36:])
-  Chunks (num_chunks * 184B, <HBB28s24s128s):
+  Chunks (num_chunks * 240B, <HBB40s36s160s):
     id, cat (0=species,1=dsa,2=jlpt,3=genetics,4=care), doc_len, title, tag, snippet
   Terms (num_terms * 12B sorted asc by hash, <IHHI):
     fnv1a_hash, idf_x100, post_cnt, post_rel_off (byte offset inside postings)
@@ -21,6 +21,7 @@ Usage:
   .venv\\Scripts\\python.exe tools\\build_rag_index.py
 """
 
+import bisect
 import json
 import math
 import re
@@ -47,32 +48,70 @@ CAT_JLPT = 2
 CAT_GENETICS = 3
 CAT_CARE = 4
 
+CHUNK_FMT = "<HBB40s36s160s"
+CHUNK_SIZE = struct.calcsize(CHUNK_FMT)  # 240 bytes
+
 STOPWORDS = {
     "a", "an", "and", "are", "as", "at", "be", "by", "do", "for", "from", "has",
     "have", "in", "is", "it", "its", "of", "on", "or", "that", "the", "this",
     "to", "was", "were", "with", "you", "your",
 }
 
+_FURIGANA_PAREN_RE = re.compile(r"\(([ぁ-んー]+)\)")
+_JP_SEQ_RE = re.compile(r"[\u3041-\u3096\u30a1-\u30fa\u30fc\u4e00-\u9fff]+")
+
 
 def fnv1a_32(tok: str) -> int:
     h = 2166136261
-    for ch in tok.lower().encode("ascii", "ignore"):
-        h ^= ch
+    for b in tok.lower().encode("utf-8"):
+        h ^= b
         h = (h * 16777619) & 0xFFFFFFFF
     return h
 
 
+def _is_kanji(ch: str) -> bool:
+    return 0x4E00 <= ord(ch) <= 0x9FFF
+
+
+def extract_jp_tokens(text: str) -> list[str]:
+    out = []
+    stripped = _FURIGANA_PAREN_RE.sub("", text)
+    for seq in _JP_SEQ_RE.findall(stripped):
+        for idx, ch in enumerate(seq):
+            if _is_kanji(ch):
+                out.append(ch)
+            if idx + 1 < len(seq):
+                out.append(seq[idx : idx + 2])
+    for furi in _FURIGANA_PAREN_RE.findall(text):
+        for idx in range(len(furi) - 1):
+            out.append(furi[idx : idx + 2])
+    return out
+
+
 def tokenize_bm25(text: str) -> list[str]:
-    toks = [m.lower() for m in re.findall(r"[A-Za-z0-9]+", text)]
-    return [t for t in toks if len(t) >= 2 and t not in STOPWORDS]
+    toks = [
+        m.lower()
+        for m in re.findall(r"[A-Za-z0-9]+", text)
+        if len(m) >= 2 and m.lower() not in STOPWORDS
+    ]
+    toks.extend(extract_jp_tokens(text))
+    return toks
 
 
-def _clean_ascii(s: str, max_len: int) -> str:
-    ascii_s = "".join(ch if 0x20 <= ord(ch) <= 0x7E else " " for ch in s)
-    ascii_s = re.sub(r"\s+", " ", ascii_s).strip()
-    if len(ascii_s) <= max_len:
-        return ascii_s
-    return ascii_s[: max_len - 3].rstrip() + "..."
+def _clean_utf8(s: str, max_bytes: int) -> str:
+    s = re.sub(r"[\x00-\x1f\x7f]+", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    b = s.encode("utf-8")
+    if len(b) <= max_bytes:
+        return s
+    lim = max(0, max_bytes - 3)
+    cut = b[:lim]
+    while cut:
+        try:
+            return cut.decode("utf-8").rstrip() + "..."
+        except UnicodeDecodeError:
+            cut = cut[:-1]
+    return ""
 
 
 def extract_species_chunks() -> list[dict]:
@@ -97,17 +136,17 @@ def extract_species_chunks() -> list[dict]:
         )
         chunks.append({
             "cat": CAT_GENETICS if is_kari_b else CAT_SPECIES,
-            "title": _clean_ascii(f"{name} Care", 27),
-            "tag": _clean_ascii(f"species:{slug}", 23),
-            "snippet": _clean_ascii(c1_snip, 127),
+            "title": _clean_utf8(f"{name} Care", 39),
+            "tag": _clean_utf8(f"species:{slug}", 35),
+            "snippet": _clean_utf8(c1_snip, 159),
             "keywords": f"{slug.replace('_', ' ')} {name} {sci} {biome} {food} {treat} {care} {cat_label} {circ}",
         })
         c2_snip = f"{name} fun facts: {fact0} {fact1}"
         chunks.append({
             "cat": CAT_SPECIES,
-            "title": _clean_ascii(f"{name} Biology", 27),
-            "tag": _clean_ascii(f"species:{slug}", 23),
-            "snippet": _clean_ascii(c2_snip, 127),
+            "title": _clean_utf8(f"{name} Biology", 39),
+            "tag": _clean_utf8(f"species:{slug}", 35),
+            "snippet": _clean_utf8(c2_snip, 159),
             "keywords": f"{slug.replace('_', ' ')} {name} {fact2}",
         })
     assert len(chunks) == 36, f"Expected 36 species chunks, got {len(chunks)}"
@@ -133,13 +172,14 @@ def extract_study_chunks() -> list[dict]:
         cards = card_pat.findall(block)[:limit]
         for prompt, c0, c1, c2, c3, ans_s, takeaway, tag in cards:
             ans = (c0, c1, c2, c3)[int(ans_s)]
-            snip = _clean_ascii(f"Answer: {ans}. {takeaway}", 127)
+            snip = _clean_utf8(f"Answer: {ans}. {takeaway}", 159)
+            extra = "jlpt japanese " if arr_name == "kDeckLangJp" else ""
             chunks.append({
                 "cat": cat,
-                "title": _clean_ascii(tag, 27),
-                "tag": _clean_ascii(tag, 23),
+                "title": _clean_utf8(tag, 39),
+                "tag": _clean_utf8(tag, 35),
                 "snippet": snip,
-                "keywords": f"{prompt} {ans} {takeaway} {tag}",
+                "keywords": f"{extra}{prompt} {ans} {takeaway} {tag}",
             })
     return chunks
 
@@ -174,9 +214,9 @@ def static_care_and_genetics_chunks() -> list[dict]:
     return [
         {
             "cat": cat,
-            "title": _clean_ascii(title, 27),
-            "tag": _clean_ascii(tag, 23),
-            "snippet": _clean_ascii(snip, 127),
+            "title": _clean_utf8(title, 39),
+            "tag": _clean_utf8(tag, 35),
+            "snippet": _clean_utf8(snip, 159),
             "keywords": kw,
         }
         for cat, title, tag, snip, kw in entries
@@ -212,7 +252,7 @@ def build_index():
             "title": ch["title"],
             "tag": ch["tag"],
             "text": ch["snippet"],
-            "search_text": _clean_ascii(full_text, 420),
+            "search_text": _clean_utf8(full_text, 480),
         })
 
     avg_dl = sum(doc_lens) / float(max(1, n_chunks))
@@ -222,16 +262,16 @@ def build_index():
     for ch in chunks:
         chunk_bytes.extend(
             struct.pack(
-                "<HBB28s24s128s",
+                CHUNK_FMT,
                 ch["id"],
                 ch["cat"],
                 ch["doc_len"],
-                ch["title"].encode("ascii")[:27],
-                ch["tag"].encode("ascii")[:23],
-                ch["snippet"].encode("ascii")[:127],
+                ch["title"].encode("utf-8")[:39],
+                ch["tag"].encode("utf-8")[:35],
+                ch["snippet"].encode("utf-8")[:159],
             )
         )
-    assert len(chunk_bytes) == n_chunks * 184
+    assert len(chunk_bytes) == n_chunks * CHUNK_SIZE
 
     sorted_hashes = sorted(postings_by_hash.keys())
     term_bytes = bytearray()
@@ -252,6 +292,7 @@ def build_index():
     post_off = term_off + len(term_bytes)
     payload = bytes(chunk_bytes) + bytes(term_bytes) + bytes(post_bytes)
     total_bytes = 36 + len(payload)
+    assert total_bytes <= 64 * 1024, f"ZRAG exceeded 64KB budget: {total_bytes}"
     crc = zlib.crc32(payload) & 0xFFFFFFFF
 
     hdr = struct.pack(
@@ -276,14 +317,14 @@ def build_index():
     OUT_JSONL.parent.mkdir(parents=True, exist_ok=True)
     with open(OUT_JSONL, "w", encoding="utf-8", newline="\n") as f:
         for row in jsonl_rows:
-            f.write(json.dumps(row) + "\n")
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
     print(
         f"Built {OUT_BIN} ({total_bytes:,} bytes < 64 KB) | "
         f"chunks={n_chunks}, terms={len(sorted_hashes)}, avg_dl={avg_dl:.2f}, crc32=0x{crc:08X}"
     )
     print(f"Exported {OUT_JSONL} ({len(jsonl_rows)} docs)")
-    smoke_query_bin(OUT_BIN, ["manatee seagrass", "jlpt ni kagitte", "sliding window"])
+    smoke_query_bin(OUT_BIN, ["manatee seagrass", "に限って", "jlpt murphy law", "sliding window"])
 
 
 def smoke_query_bin(bin_path: Path, queries: list[str]):
@@ -294,7 +335,6 @@ def smoke_query_bin(bin_path: Path, queries: list[str]):
 
     avg_dl = avg_dl_x100 / 100.0
     hashes = [struct.unpack_from("<I", raw, t_off + i * 12)[0] for i in range(n_t)]
-    import bisect
 
     for q in queries:
         scores = [0.0] * n_c
@@ -310,13 +350,13 @@ def smoke_query_bin(bin_path: Path, queries: list[str]):
                 idf = idf_x100 / 100.0
                 for j in range(p_cnt):
                     cid, tf, _p = struct.unpack_from("<HBB", raw, p_off + p_rel + j * 4)
-                    dl = raw[c_off + cid * 184 + 3]
+                    dl = raw[c_off + cid * CHUNK_SIZE + 3]
                     denom = tf + 1.2 * (0.25 + 0.75 * (dl / avg_dl))
                     scores[cid] += idf * ((tf * 2.2) / denom)
         best = max(range(n_c), key=lambda i: scores[i])
-        _id, _cat, _dl, title_b, tag_b, snip_b = struct.unpack_from("<HBB28s24s128s", raw, c_off + best * 184)
-        title = title_b.split(b"\x00", 1)[0].decode("ascii")
-        snip = snip_b.split(b"\x00", 1)[0].decode("ascii")
+        _id, _cat, _dl, title_b, tag_b, snip_b = struct.unpack_from(CHUNK_FMT, raw, c_off + best * CHUNK_SIZE)
+        title = title_b.split(b"\x00", 1)[0].decode("utf-8")
+        snip = snip_b.split(b"\x00", 1)[0].decode("utf-8")
         assert scores[best] > 1.0, f"Smoke query {q!r} scored low: {scores[best]}"
         print(f"  Smoke [{q}] -> ({scores[best]:.2f}) {title}: {snip}")
 

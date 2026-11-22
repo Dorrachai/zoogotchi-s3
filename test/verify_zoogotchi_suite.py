@@ -283,25 +283,96 @@ def test_study_decks_and_sm2():
         block = decks_src.split(f"static const StudyCard {arr_name}[] = {{")[1].split("};")[0]
         cards = card_pat.findall(block)
         assert len(cards) >= min_cnt, f"{arr_name} has {len(cards)} cards, expected >= {min_cnt}"
+        is_jp = arr_name == "kDeckLangJp"
+        romaji_tokens = ("kagitte", "wasureta", "shimatta", "itashimasu", "mujun", "dakyou", "taenai", "koto ni natta")
         for prompt, c0, c1, c2, c3, ans_s, takeaway, tag in cards:
-            for txt in (prompt, c0, c1, c2, c3, takeaway, tag):
-                assert txt and all(0x20 <= ord(ch) <= 0x7E for ch in txt), f"Non-ASCII or empty in {arr_name}: {txt!r}"
-            assert len(prompt) <= 90, f"Prompt too long in {arr_name}: {len(prompt)} ({prompt!r})"
-            for c in (c0, c1, c2, c3):
-                assert len(c) <= 26, f"Choice too long in {arr_name}: {len(c)} ({c!r})"
-            assert len(takeaway) <= 80, f"Takeaway too long in {arr_name}: {len(takeaway)} ({takeaway!r})"
-            assert len(tag) <= 24, f"Tag too long in {arr_name}: {len(tag)} ({tag!r})"
-            if arr_name == "kDeckLangJp":
+            if is_jp:
+                for txt in (prompt, c0, c1, c2, c3, takeaway, tag):
+                    assert txt, f"Empty string in {arr_name}"
+                assert len(prompt.encode("utf-8")) <= 191, f"Prompt UTF-8 too long in {arr_name}: {len(prompt.encode('utf-8'))}"
+                for c in (c0, c1, c2, c3):
+                    assert len(c.encode("utf-8")) <= 63, f"Choice UTF-8 too long in {arr_name}: {c!r}"
+                assert len(takeaway.encode("utf-8")) <= 159, f"Takeaway UTF-8 too long in {arr_name}: {takeaway!r}"
+                assert len(tag.encode("utf-8")) <= 35, f"Tag UTF-8 too long in {arr_name}: {len(tag.encode('utf-8'))} ({tag!r})"
+                assert re.search(r"[\u3040-\u30ff\u4e00-\u9fff]", prompt), f"Expected native Japanese in prompt: {prompt!r}"
+                for km in re.finditer(r"[\u4e00-\u9fff]+", prompt):
+                    tail = prompt[km.end() :]
+                    assert re.match(r"\([ぁ-んー]+\)", tail), f"Kanji {km.group(0)!r} missing furigana in {prompt!r}"
+                joined_low = " ".join((prompt, c0, c1, c2, c3, takeaway, tag)).lower()
+                for rm in romaji_tokens:
+                    assert rm not in joined_low, f"Found residual romaji {rm!r} in {arr_name}: {prompt!r}"
                 for lvl in ("[N4]", "[N3]", "[N2]", "[N1]"):
                     if lvl in prompt and lvl in tag:
                         jp_tags_found.add(lvl)
+            else:
+                for txt in (prompt, c0, c1, c2, c3, takeaway, tag):
+                    assert txt and all(0x20 <= ord(ch) <= 0x7E for ch in txt), f"Non-ASCII or empty in {arr_name}: {txt!r}"
+                assert len(prompt) <= 90, f"Prompt too long in {arr_name}: {len(prompt)} ({prompt!r})"
+                for c in (c0, c1, c2, c3):
+                    assert len(c) <= 26, f"Choice too long in {arr_name}: {len(c)} ({c!r})"
+                assert len(takeaway) <= 80, f"Takeaway too long in {arr_name}: {len(takeaway)} ({takeaway!r})"
+                assert len(tag) <= 24, f"Tag too long in {arr_name}: {len(tag)} ({tag!r})"
         total_cards += len(cards)
     assert jp_tags_found == {"[N4]", "[N3]", "[N2]", "[N1]"}, f"Missing JLPT levels in kDeckLangJp: {jp_tags_found}"
+
+    web_html = (ROOT / "web_ui" / "index.html").read_text(encoding="utf-8")
+    jlpt_pack = re.search(r"function loadJlptPack\(\)\{.*?\n\}", web_html, re.DOTALL)
+    assert jlpt_pack, "loadJlptPack() missing from web_ui/index.html"
+    pack_low = jlpt_pack.group(0).lower()
+    for rm in ("ni mo mashite", "omoikiya", "kagitte", "sokushite", "hantai"):
+        assert rm not in pack_low, f"Found residual romaji {rm!r} in web_ui/index.html loadJlptPack()"
 
     # Verify SM-2 / Leitner box intervals in study_engine.cpp
     eng_src = (ROOT / "src" / "learn" / "study_engine.cpp").read_text(encoding="utf-8")
     assert "BOX_INTERVAL_HR[6] = {0, 4, 24, 72, 168, 360}" in eng_src
-    print(f"[PASS] Study Decks & SM-2 verified ({total_cards} strictly ASCII cards across 5 built-in decks)")
+    print(f"[PASS] Study Decks & SM-2 verified ({total_cards} cards across 5 built-in decks; JLPT JP+furigana)")
+
+
+def test_jp_font_glyph_coverage():
+    font_c = ROOT / "src" / "display" / "zoo_font_jp_12.c"
+    assert font_c.is_file(), f"Missing generated JP font file: {font_c}"
+    c_src = font_c.read_text(encoding="utf-8")
+
+    # Parse unicode_list_* arrays from C source
+    ulists: dict[str, list[int]] = {}
+    for m in re.finditer(r"static const uint16_t (\w+)\[\]\s*=\s*\{([^}]*)\};", c_src, re.DOTALL):
+        name, body = m.groups()
+        ulists[name] = [int(x, 16) for x in re.findall(r"0x[0-9a-fA-F]+|\d+", body)]
+
+    cmap_block = c_src.split("static const lv_font_fmt_txt_cmap_t cmaps[] = {")[1].split("};")[0]
+    cmap_pat = re.compile(
+        r"\.range_start\s*=\s*(\d+),\s*\.range_length\s*=\s*(\d+),\s*\.glyph_id_start\s*=\s*(\d+),\s*"
+        r"\.unicode_list\s*=\s*(\w+),\s*\.glyph_id_ofs_list\s*=\s*\w+,\s*\.list_length\s*=\s*(\d+),\s*"
+        r"\.type\s*=\s*(\w+)",
+        re.DOTALL,
+    )
+    cmaps = cmap_pat.findall(cmap_block)
+    assert len(cmaps) >= 5, f"Expected >= 5 font cmaps in zoo_font_jp_12.c, got {len(cmaps)}"
+
+    covered_cps: set[int] = set()
+    for rs_s, rl_s, _gs_s, ul_name, _ll_s, ctype in cmaps:
+        rs, rl = int(rs_s), int(rl_s)
+        if ctype == "LV_FONT_FMT_TXT_CMAP_FORMAT0_TINY":
+            covered_cps.update(range(rs, rs + rl))
+        elif ctype == "LV_FONT_FMT_TXT_CMAP_SPARSE_TINY":
+            assert ul_name in ulists, f"Missing array {ul_name} referenced in cmaps"
+            covered_cps.update(rs + off for off in ulists[ul_name])
+        else:
+            raise AssertionError(f"Unsupported cmap type in zoo_font_jp_12.c: {ctype}")
+
+    # Collect every character in kDeckLangJp + web_ui loadJlptPack()
+    jp_hdr = (ROOT / "src" / "learn" / "decks" / "japanese_jlpt.h").read_text(encoding="utf-8")
+    deck_block = jp_hdr.split("static const StudyCard kDeckLangJp[] = {")[1].split("};")[0]
+    literals = re.findall(r'"([^"]*)"', deck_block)
+
+    web_html = (ROOT / "web_ui" / "index.html").read_text(encoding="utf-8")
+    jlpt_pack = re.search(r"function loadJlptPack\(\)\{.*?\n\}", web_html, re.DOTALL).group(0)
+    literals.extend(re.findall(r'"([^"]*)"', jlpt_pack))
+
+    needed = {ord(ch) for lit in literals for ch in lit if ord(ch) >= 0x20}
+    missing = sorted(cp for cp in needed if cp not in covered_cps)
+    assert not missing, f"Missing {len(missing)} glyphs in zoo_font_jp_12.c: {[hex(x) + chr(x) for x in missing[:10]]}"
+    print(f"[PASS] LVGL JP font coverage verified ({len(covered_cps)} glyphs, 0 missing across JLPT deck & web pack)")
 
 
 def test_sprite_packer():
@@ -393,7 +464,7 @@ def test_rag_index_binary():
     sys.path.insert(0, str(ROOT / "tools"))
     import build_rag_index
 
-    build_rag_index.smoke_query_bin(rag_bin, ["manatee seagrass", "jlpt ni kagitte", "sliding window"])
+    build_rag_index.smoke_query_bin(rag_bin, ["manatee seagrass", "に限って", "jlpt murphy law", "sliding window"])
     print(f"[PASS] On-device ZRAG binary verified ({tot:,} B, {n_c} chunks, {n_t} terms, CRC32 0x{crc:08X})")
 
 
@@ -478,6 +549,7 @@ def main():
     test_safety_guardrails_vectors()
     test_web_bundle()
     test_study_decks_and_sm2()
+    test_jp_font_glyph_coverage()
     test_sprite_packer()
     test_packed_sprites()
     test_zple_trainer_and_binary()
