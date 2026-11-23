@@ -1,121 +1,138 @@
-# ZooGotchi S3 — Standalone Real-Zoo & Karimono Virtual Pet
+<div align="center">
 
-An open-source, pocket-sized virtual pet for the **Waveshare ESP32-S3-Touch-LCD-1.69** (`16 MB Flash / 8 MB OPI PSRAM`), powered by a **3.7V 1000mAh LiPo**, a **rechargeable RTC backup coin cell**, and a custom **3D-printed enclosure** (Bambu Lab X1 Carbon + 4× M2×6mm self-tapping screws). **Zero PC required at runtime.**
+# ZooGotchi S3
 
----
+**A pocket-sized virtual pet, study buddy, and wellness coach for the Waveshare ESP32-S3-Touch-LCD-1.69 — zero PC required.**
 
-## Key Features
+![Hardware](https://img.shields.io/badge/Hardware-ESP32--S3%201.69%22%20Touch-0284c7?style=flat-square)
+![UI](https://img.shields.io/badge/UI-LVGL%209.3-6d28d9?style=flat-square)
+![Species](https://img.shields.io/badge/Companions-18%20Species-16a34a?style=flat-square)
+![License](https://img.shields.io/badge/License-Apache--2.0-334155?style=flat-square)
 
-1. **6 Categories × 3 Species (18 Total):**
-   - **Land (Permadeath):** Red Panda, Fennec Fox, Capybara
-   - **Sky (Permadeath):** Barn Owl, Scarlet Macaw, Ruby Hummingbird
-   - **Insect (Permadeath):** Monarch Butterfly (full metamorphosis!), Hercules Beetle, Orchid Mantis
-   - **Water (Permadeath):** **West Indian Manatee**, Axolotl, Giant Pacific Octopus
-   - **Reptile (Permadeath):** Galapagos Tortoise, Veiled Chameleon (mood-reactive hue!), Leopard Gecko
-   - **Karimono (Cross-Breedable Lineage):** Hoshi-Karimono, Kumo-Karimono, Kuro-Karimono
-2. **Authentic Lifecycles vs Lineage:**
-   - **Real Zoo Animals** follow authentic circadian schedules (diurnal, nocturnal, crepuscular, cathemeral) via the `PCF85063A` RTC and experience real **permadeath** (from natural old age or severe neglect), leaving a permanent tribute in `/memorial.json`.
-   - **Karimono** can **cross-breed** at Adult stage (offline Plaza Spirit or via 12-char Base32 Genome Codes) to pass down modular traits, colors, and rare mutations across generations in `/lineage.json`.
-3. **100% On-Chip Safe Personality & Micro-LLM:**
-   - **3-Layer Defense-in-Depth Safety:** Asymmetric output vocabulary (`include/zoo_vocab_out.h`, 1,421 audited safe words), Layer 2 prompt-injection & leetspeak sanitizer, and Layer 3 output length/loop validator.
-   - Runs a **Per-Layer Embedding (PLE) INT4** transformer directly from Flash/PSRAM (`llm_model` partition) on Core 0, plus an instant species/trait/memory-aware fallback engine right out of the box!
-4. **Spaced-Repetition Learning Academy & LeetCode Drills (`PCF85063A` SM-2):**
-   - **5 Built-In Decks (106 Cards):** *LeetCode / NeetCode Patterns* (24 cards), *Big-O & Interview Edge Cases* (16 cards), *Spanish Vocab* (20 cards), *Japanese JLPT (N4-N1)* (28 cards), and *Zoo Biology* (18 cards), plus up to **40 Custom Cards** uploaded from your phone (including 1-tap *NeetCode Trees/Graphs/DP* and *JLPT N2/N1 Bonus* packs).
-   - **Focus / Pomodoro Study Buddy:** 15m / 25m LeetCode Sprint / 35m Mock Interview countdown ring beside your pet.
-   - **Protégé Effect & Rewards:** Mastered words/patterns unlock Zoo Coins, Scholar Glasses / Grad Cap cosmetics, and appear in your pet's memory & AI replies.
-5. **Touch, 6-Axis IMU Play & Deep Sleep:**
-   - Capacitive touch (`CST816T`) + petting strokes, 3 mini-games (`Forage Catch` IMU tilt, `Habitat Care` touch, `Rhythm Chirp` buzzer), pocket step-walker (`QMI8658C`), Zoo Shop, and 4-stage deep sleep.
-6. **Local Phone Web Chat & Study Studio (No PC):**
-   - Double-press `PWR` (or tap the top-right battery pill / Menu) to start **`ZooGotchi-S3`** SoftAP (or Home Wi-Fi STA) and chat, cross-breed, sync clock, or upload custom LeetCode/language decks right from your phone browser (`http://192.168.4.1` or `http://zoogotchi.local`, with on-screen QR code!).
+<br>
+
+<img src="docs/assets/zoogotchi-device-preview.png" alt="ZooGotchi S3 Hardware Screens" width="760">
+
+</div>
 
 ---
 
-## Project Layout (Where to Edit)
+## Choose Your Companion
 
-| What You Want to Edit | Folder / Files |
-|---|---|
-| **Animal Categories & Species** | [`src/zoo/categories/`](src/zoo/categories/) (`land.h`, `sky.h`, `insect.h`, `water.h`, `reptile.h`, `karimono.h`) |
-| **Study & Language Flashcard Decks** | [`src/learn/decks/`](src/learn/decks/) (`dsa_patterns.h`, `dsa_bigo.h`, `spanish.h`, `japanese_jlpt.h`, `zoo_bio.h`) |
-| **Mini-Games** | [`src/game/minigames/`](src/game/minigames/) (`forage_catch.cpp`, `habitat_care.cpp`, `rhythm_chirp.cpp`) |
-| **Micro-LLM, BM25 RAG & Safety** | [`src/ai/`](src/ai/) (`micro_llm_ple.cpp`, `rag_retriever.cpp`, `safety_guardrails.cpp`, `personality_memory.cpp`) |
-| **Packed Pixel-Art Sprites & RAG Index** | [`data/sprites/`](data/sprites/) (`*_3.bin`), [`data/rag/kb.bin`](data/rag/kb.bin) |
-| **Phone Companion Web App** | [`web_ui/index.html`](web_ui/index.html) (packed by `tools/build_web_gz.py`) |
-| **Dataset Curation, Hybrid RAG & Post-Training** | [`llm_training/`](llm_training/) (`data_pipeline/`, `rag/`, `post_training/`, `eval/`, `tracking/`) |
+Adopt one of **18 companions across 6 biomes**. Real animals follow authentic day/night rhythms and real **permadeath** (leaving a sanctuary memorial), while mystical **Karimono** can **cross-breed** across generations via offline Plaza spirits or shareable **12-char Base32 Genome Codes**.
 
----
+<div align="center">
+  <img src="docs/assets/zoogotchi-species-sprites.png" alt="ZooGotchi S3 Packed 64x64 Pixel Sprites" width="520">
+</div>
 
-## Hardware Safety Warnings (Read First!)
-
-> **CRITICAL — Battery & Coin Cell Wiring:**
-> 1. **1000mAh LiPo `MX1.25` Polarity:** Verify Red (`+`) / Black (`-`) against the Waveshare PCB silkscreen before plugging in — generic LiPo leads are often wired backwards and can short the `ETA6098` charger.
-> 2. **Rechargeable RTC Coin Cell Only:** The `SH1.0` RTC connector trickle-charges the cell. Only use a **rechargeable** coin cell (`ML414` / `MS621FE`), never a primary `CR`-series coin cell.
-
-See [`hardware/enclosure_notes.md`](hardware/enclosure_notes.md) for Bambu Lab X1 Carbon fitment and M2×6mm screw boss guidelines.
+| Biome | Species Roster | Signature Twist |
+| :--- | :--- | :--- |
+| **Land** | Red Panda, Fennec Fox, Capybara | Diurnal / nocturnal / crepuscular habits & real-animal permadeath |
+| **Sky** | Barn Owl, Scarlet Macaw, Ruby Hummingbird | High-metabolism flight care & species chirps |
+| **Insect** | Monarch Butterfly, Hercules Beetle, Orchid Mantis | True metamorphosis stages (Larva -> Pupa -> Imago) |
+| **Water** | **West Indian Manatee**, Axolotl, Giant Pacific Octopus | Warm-lagoon / tank habitat care & seagrass grazing |
+| **Reptile** | Galapagos Tortoise, Veiled Chameleon, Leopard Gecko | Slow longevity & mood-reactive chameleon color shifting |
+| **Karimono** | Hoshi-Karimono, Kumo-Karimono, Kuro-Karimono | Mendelian + mutation cross-breeding across generations (`/lineage.json`) |
 
 ---
 
-## Build & Flash Instructions
+## What's Inside the Pocket Game
 
-Run the complete automated check & build gate (or individual steps below):
+- **Care & Lifecycles:** Keep 7 vitals balanced (`Hunger`, `Hydration`, `Habitat Care`, `Enrichment`, `Energy`, `Health`, `Bond`), evolve personalities along 4 axes, spend Zoo Coins on Scholar Glasses & treats in the Zoo Shop, and preserve tributes in `/memorial.json`.
+- **Play (Touch, Tilt & Sound):** Pet your companion right on the LCD, rock the device gently for a lullaby, and play 3 mini-games — **Forage Catch** (IMU tilt), **Habitat Care** (tap), and **Rhythm Chirp** (passive buzzer).
+- **Study Academy & Focus Buddy:** Drill **106 SM-2 flashcards** across 5 decks (*LeetCode Patterns*, *Big-O & Edge*, *Spanish*, **Japanese JLPT N4–N1 with native kanji + inline furigana**, and *Zoo Biology*), upload up to **40 custom cards** from your phone, and run 15m / 25m / 35m Focus sprints to teach your pet new terms.
+- **Health & Step Coach:** Pocket pedometer (`QMI8658C`, keeps counting while walking with the screen off) with configurable daily step goals, automatic `PCF85063A` midnight rollover, 7-day history & streak tracking, hydration cup logging that hydrates your pet too, gentle daytime move/water nudges, and a 1-minute **`4-4-4-4` guided breathing** coach.
+- **Offline Companion Brain & Phone Web Studio:** Talk to your pet 100% offline via the on-chip INT4 PLE micro-LLM + 3-layer safety guardrails + on-device BM25 RAG, or double-press `PWR` and scan the on-screen QR code to open the local Web Studio (`http://192.168.4.1`).
+
+---
+
+## Controls Manual
+
+| Input | Action | What It Does |
+| :--- | :--- | :--- |
+| **Touch** | Tap Pet | Ask your companion to speak (`Micro-LLM / Personality Engine`) |
+| **Touch** | Stroke Sprite | Pet for affection & purrs |
+| **Touch** | Tap Step Bar | Open **Health & Goals** (arc, water tracker, 1m breathing) |
+| **Touch** | Swipe Right / Left / Up / Down | Care / Field Journal / Study Academy / Settings & Wi-Fi QR (Down exits mini-game) |
+| **Motion** | Walk / Gentle Rock / Tilt & Shake | Count steps in pocket / Trigger lullaby / Steer **Forage Catch** (hard shake = dizzy!) |
+| **`PWR` Button** | Short / Double / Hold `2.5s` | Screen sleep (steps stay active) / Toggle Wi-Fi QR / Atomic save & power off |
+| **`BOOT` Button** | Short Press | Exit mini-game or return Home |
+
+---
+
+> [!CAUTION]
+> **Battery & Coin Cell Hardware Safety (Read Before Plugging In)**
+> 1. **1000mAh LiPo (`MX1.25`):** Always check Red (`+`) / Black (`-`) polarity against the Waveshare PCB silkscreen — generic LiPo packs are frequently wired backwards and can damage the `ETA6098` charger.
+> 2. **RTC Backup Cell (`SH1.0`):** Use **only a rechargeable coin cell** (`ML414` or `MS621FE`) — never a primary `CR`-series battery.
+>
+> Printed enclosure tolerances & M2×6mm boss specs: [`hardware/enclosure_notes.md`](hardware/enclosure_notes.md).
+
+---
+
+## Quick Start (Build & Flash)
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File "..\.agents\skills\zoogotchi-s3\scripts\check_all.ps1"
-```
-
-```powershell
-# 1. Activate virtual env (if using D:\ cache on tight C:\ drives, set PLATFORMIO_CORE_DIR)
-$env:PLATFORMIO_CORE_DIR = "d:\.platformio"
-
-# 2. Build & audit safe vocabulary + Phone Web PWA + verification suite
-.\.venv\Scripts\python.exe llm_training\build_asymmetric_vocab.py
-.\.venv\Scripts\python.exe llm_training\verify_vocab_safety.py
+# 1. Generate Web UI bundle & verify project invariants
 .\.venv\Scripts\python.exe tools\build_web_gz.py
 .\.venv\Scripts\python.exe test\verify_zoogotchi_suite.py
 
-# 3. Compile firmware & LittleFS image (includes /web/index.html.gz + /sprites/*_3.bin)
-.\.venv\Scripts\pio.exe run -e waveshare_s3_169
-.\.venv\Scripts\pio.exe run -e waveshare_s3_169 -t buildfs
-
-# 4. Flash firmware + LittleFS over USB-C
+# 2. Build & flash firmware + LittleFS assets (Waveshare ESP32-S3-Touch-LCD-1.69)
 .\.venv\Scripts\pio.exe run -e waveshare_s3_169 -t upload
 .\.venv\Scripts\pio.exe run -e waveshare_s3_169 -t uploadfs
 ```
 
-### AI Sprites & Custom Study Decks (`google-genai` Interactions API)
-- **Sprites (`data/sprites/`):** 12 species pixel-art sprites (`barn_owl`, `capybara`, `chameleon`, `fennec_fox`, `hercules_beetle`, `kumo_karimono`, `leopard_gecko`, `manatee`, `monarch`, `orchid_mantis`, `red_panda`, `tortoise`) are pre-packed (`12,292 B` each with border flood-fill alpha keying); the remaining 6 render cleanly via the built-in animated C++ renderer until topped up with your `GEMINI_API_KEY` (in `.env` or env):
+*(Zero external microSD needed: `firmware.bin` and `littlefs.bin` pack all sprites, web UI, Japanese LVGL font, and RAG index onto the 16 MB onboard Flash.)*
+
+---
+
+<details>
+<summary><b>Phone Companion Studio Preview</b></summary>
+
+<br>
+<div align="center">
+  <img src="docs/assets/zoogotchi-web-companion.png" alt="ZooGotchi S3 Phone Companion UI" width="420">
+</div>
+
+</details>
+
+<details>
+<summary><b>Modding & Where to Edit</b></summary>
+
+| Customization Area | Location |
+| :--- | :--- |
+| **Species & Biomes (6 headers × 3)** | [`src/zoo/categories/`](src/zoo/categories/) (`land.h`, `sky.h`, `insect.h`, `water.h`, `reptile.h`, `karimono.h`) |
+| **Study Flashcard Decks** | [`src/learn/decks/`](src/learn/decks/) (`dsa_patterns.h`, `dsa_bigo.h`, `spanish.h`, `japanese_jlpt.h`, `zoo_bio.h`) |
+| **Health Goals & Guided Breathing** | [`src/health/`](src/health/) (`health_tracker.h`, `health_tracker.cpp`) |
+| **Mini-Games** | [`src/game/minigames/`](src/game/minigames/) (`forage_catch.cpp`, `habitat_care.cpp`, `rhythm_chirp.cpp`) |
+| **Micro-LLM, BM25 RAG & Safety** | [`src/ai/`](src/ai/) (`micro_llm_ple.cpp`, `rag_retriever.cpp`, `safety_guardrails.cpp`, `personality_memory.cpp`) |
+| **Japanese LVGL Font & Pixel Sprites** | [`src/display/zoo_font_jp_12.c`](src/display/zoo_font_jp_12.c), [`data/sprites/`](data/sprites/) |
+| **Phone Companion Web App** | [`web_ui/index.html`](web_ui/index.html) (packed into `data/web/index.html.gz`) |
+| **Training, Hybrid RAG & Benchmarks** | [`llm_training/`](llm_training/) (`data_pipeline/`, `rag/`, `post_training/`, `eval/`, `tracking/`) |
+
+</details>
+
+<details>
+<summary><b>Under the Hood: On-Device RAG, INT4 Micro-LLM & Asset Generators</b></summary>
+
+- **On-Device & Hybrid RAG:** Binary BM25 index [`data/rag/kb.bin`](data/rag/kb.bin) (`53,304 B`, `109` chunks across species, DSA, JLPT N4–N1 Japanese+English, health goals, genetics, and hardware) queried on-chip via `/api/rag`; benchmarked host-side against **BM25 Sparse vs. Dense SVD vs. Hybrid RRF** (`llm_training/rag/hybrid_rag.py`: `R@1 = 1.000`, `nDCG@5 = 0.971`).
+- **On-Chip Micro-LLM Post-Training:** Zero-leakage curated dataset -> `Base SFT` -> `LoRA SFT` -> `GRPO` vs. `SAPO` alignment -> `3.54 MB` INT4 `ZPLE` weights flashed to `0x610000` (`zoo_pet.bin`, `0.9992` C++ parity) backed by an audited 1,421-word safe output vocabulary (`include/zoo_vocab_out.h`).
+- **Asset & Font Generators (Gemini API & Local):**
   ```powershell
+  # Top up missing 64x64 pixel sprites (requires GEMINI_API_KEY)
   .\.venv\Scripts\python.exe tools\generate_zoo_sprites.py --missing-only --pack
+
+  # Generate custom study deck (e.g. JLPT with kanji+furigana or NeetCode)
+  .\.venv\Scripts\python.exe tools\generate_study_deck.py --topic "JLPT N2" --count 15
+
+  # Rebuild ZRAG binary index, JP bitmap font, or run GPU post-training suite
+  .\.venv\Scripts\python.exe tools\build_rag_index.py
+  .\.venv\Scripts\python.exe tools\build_jp_font.py
+  .\.venv\Scripts\python.exe llm_training\post_training\run_post_training_suite.py
   ```
-- **Custom Study Decks:** Generate flashcards with `gemini-3.8-flash` structured JSON output (`tools/generate_study_deck.py --topic "JLPT N2" --count 15`).
+- **Deep Docs & Benchmarks:** [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | [`docs/BENCHMARK_REPORT.md`](docs/BENCHMARK_REPORT.md) | [Training & RAG Curves](docs/assets/training_curves.svg)
 
-### Train & Flash On-Chip PLE Micro-LLM Weights (`zoo_pet.bin`)
-1. Curate zero-leakage train/val/test splits (`llm_training/data_pipeline/curate_dataset.py`) or generate fresh samples with `generate_zoo_dataset.py` (`--dry-run`, `--live`, or `--submit-batch`).
-2. Run the reproducible GPU post-training suite (**Base SFT -> LoRA SFT -> GRPO vs SAPO -> INT4 ZPLE export + C++ parity**):
-   ```powershell
-   .\.venv\Scripts\python.exe llm_training\rag\hybrid_rag.py
-   .\.venv\Scripts\python.exe llm_training\post_training\run_post_training_suite.py
-   .\.venv\Scripts\python.exe llm_training\eval\benchmark_suite.py
-   ```
-   *(Or run `llm_training/train_ple_zoopet.py --epochs 45 --verify` / [`llm_training/train_ple_zoopet.ipynb`](llm_training/train_ple_zoopet.ipynb) directly.)*
-3. Flash `llm_training/out/zoo_pet.bin` (`3,543,028 B` <= `9.875 MB`) to the `llm_model` partition (`0x610000`):
-   ```powershell
-   D:\.platformio\packages\tool-esptoolpy\esptool.py --chip esp32s3 write_flash 0x610000 llm_training\out\zoo_pet.bin
-   ```
+</details>
 
 ---
 
-## On-Device RAG & Micro-LLM Post-Training
-
-All training, alignment, and retrieval components run reproducibly on the local RTX 3060 GPU and deploy straight to the ESP32-S3:
-
-- **On-Device & Host Hybrid RAG:** Packed binary BM25 index (`/rag/kb.bin`, `42,216 B`, `108` chunks across species care, DSA, JLPT N4–N1, genetics, and hardware) queried directly on the ESP32-S3 (`src/ai/rag_retriever.cpp`, `POST /api/rag`), benchmarked against host **BM25 Sparse vs Dense SVD vs Hybrid RRF** (`llm_training/rag/hybrid_rag.py`, `R@1 = 1.000`, `nDCG@5 = 0.970` across 36 queries).
-- **Zero-Leakage Curation & LoRA + GRPO/SAPO Post-Training:** Automated SHA-256 + 3-gram Jaccard dedup with 0-prompt-overlap splits (`llm_training/data_pipeline/curate_dataset.py`), followed by `Base SFT` (`R = 0.4865`, `41.0%` species match) -> `LoRA SFT` (`r=8`, `3.20%` trainable weights, `R = 0.9347`, `100.0%` match) -> **`GRPO`** (`R = 0.9381`) vs **`SAPO`** (`R = 0.9313`, lower KL drift `0.0021` vs `0.0071`) -> INT4 `zoo_pet.bin` (`0.9992` C++ parity), logged to SQLite (`llm_training/tracking/experiment_tracker.py`).
-- **Architecture & Benchmarks:**
-  - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — Hardware, on-device RAG, post-training pipeline & safety stack
-  - [`docs/BENCHMARK_REPORT.md`](docs/BENCHMARK_REPORT.md) — Auto-generated SFT/LoRA/GRPO/SAPO & Hybrid RAG benchmarks + [SVG training curves](docs/assets/training_curves.svg)
-
----
-
-## License & Attribution
-
-Licensed under the **Apache License, Version 2.0** (`LICENSE`). See `NOTICE` for upstream hardware bring-up attribution and trademark notices.
+Licensed under the **Apache License, Version 2.0** ([`LICENSE`](LICENSE)). See [`NOTICE`](NOTICE) for hardware bring-up attribution.
