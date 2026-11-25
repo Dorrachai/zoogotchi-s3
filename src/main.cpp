@@ -191,12 +191,81 @@ static void cb_zoo_action(ZooAction act) {
     }
 }
 
+static uint8_t     g_journal_rag_idx = 0;
+static uint8_t     g_talk_turn       = 0;
+
 static void cb_ask_pet_talk() {
+    char q[96] = {};
+    AnimalCategory cat = AnimalCategory::LAND;
     pet_state_lock();
-    AnimalCategory cat = g_pet.category;
+    cat = g_pet.category;
+    const SpeciesProfile& sp = species_get(g_pet.speciesId);
+    if (g_pet.sick) {
+        snprintf(q, sizeof(q), "%s sick vet medicine tonic cure", sp.slug);
+    } else if (g_pet.hunger < 45) {
+        snprintf(q, sizeof(q), "%s %s care food", sp.slug, sp.primaryFood);
+    } else if (g_pet.envCare < 45) {
+        snprintf(q, sizeof(q), "%s %s care biome", sp.slug, sp.envCareLabel);
+    } else {
+        uint8_t slot = g_talk_turn++ & 0x03;
+        if (slot == 0)      strlcpy(q, "How are you feeling?", sizeof(q));
+        else if (slot == 1) snprintf(q, sizeof(q), "%s biology fun facts", sp.slug);
+        else if (slot == 2) snprintf(q, sizeof(q), "%s lifecycle stages evolve", sp.slug);
+        else                snprintf(q, sizeof(q), "%s %s care", sp.slug, sp.biomeName);
+    }
     pet_state_unlock();
     buzzer_play_category_emote((uint8_t)cat);
-    ask_pet_brain("How are you feeling?");
+    ask_pet_brain(q);
+}
+
+static void cb_journal_zoo_guide() {
+    if (!rag_is_ready()) {
+        ui_journal_show_rag_card("Stats View", "On-device Zoo RAG index (/rag/kb.bin) not mounted.");
+        return;
+    }
+
+    pet_state_lock();
+    const SpeciesProfile& sp = species_get(g_pet.speciesId);
+    char ctx_q[96] = {};
+    if (g_pet.sick) {
+        snprintf(ctx_q, sizeof(ctx_q), "sick vet medicine tonic cure");
+    } else if (g_pet.hunger < 45) {
+        snprintf(ctx_q, sizeof(ctx_q), "%s %s care food", sp.slug, sp.primaryFood);
+    } else if (g_pet.hydration < 45) {
+        snprintf(ctx_q, sizeof(ctx_q), "%s water hydration care", sp.slug);
+    } else if (g_pet.envCare < 45) {
+        snprintf(ctx_q, sizeof(ctx_q), "%s %s care biome", sp.slug, sp.envCareLabel);
+    } else if (sp.isKarimono) {
+        snprintf(ctx_q, sizeof(ctx_q), "%s karimono cross-breeding genome mutation", sp.slug);
+    } else {
+        snprintf(ctx_q, sizeof(ctx_q), "%s biome guide circadian personality", sp.slug);
+    }
+    pet_state_unlock();
+
+    RagHit sp_hits[3] = {};
+    uint8_t sp_cnt = rag_list_species_chunks(sp.slug, sp_hits, 3);
+    RagHit ctx_hit = {};
+    bool has_ctx = (rag_query_zoo(ctx_q, sp.slug, &ctx_hit, 1) > 0);
+    uint8_t total = (uint8_t)(sp_cnt + (has_ctx ? 1 : 0));
+
+    if (total == 0 || g_journal_rag_idx >= total) {
+        g_journal_rag_idx = 0;
+        ui_journal_reset_view();
+        uint8_t hr = 0, mn = 0;
+        rtc_epoch_to_local_hm(rtc_get_epoch(), g_cfg.tz_offset_min, &hr, &mn);
+        pet_state_lock();
+        ui_update_home(&g_pet, &g_cfg, hr, mn, g_bat_pct, web_companion_is_active(), millis());
+        pet_state_unlock();
+        return;
+    }
+
+    const RagHit& h = (g_journal_rag_idx < sp_cnt) ? sp_hits[g_journal_rag_idx] : ctx_hit;
+    char body[240];
+    snprintf(body, sizeof(body), "%s (%u/%u)\n\n%s",
+             h.title, (unsigned)(g_journal_rag_idx + 1), (unsigned)total, h.snippet);
+    g_journal_rag_idx++;
+    const char* btn_lbl = (g_journal_rag_idx < total) ? "Next Tip" : "Stats View";
+    ui_journal_show_rag_card(btn_lbl, body);
 }
 
 static void cb_buy_use_shop(uint8_t item_idx) {
@@ -490,7 +559,8 @@ void setup() {
         cb_open_study_hub, cb_start_quiz_deck, cb_quiz_answer, cb_quiz_next,
         cb_open_focus, cb_start_focus, cb_stop_focus,
         cb_open_health, cb_log_water, cb_adjust_step_goal,
-        cb_toggle_health_reminders, cb_toggle_breathe
+        cb_toggle_health_reminders, cb_toggle_breathe,
+        cb_journal_zoo_guide
     };
     ui_screens_init(cbs);
 
@@ -587,6 +657,7 @@ void loop() {
             if (tev.type == TouchEventType::PET_STROKE) {
                 cb_zoo_action(ZooAction::PET_STROKE);
             } else if (tev.type == TouchEventType::SWIPE_LEFT) {
+                g_journal_rag_idx = 0;
                 ui_show_screen(UiScreen::JOURNAL);
             } else if (tev.type == TouchEventType::SWIPE_RIGHT) {
                 ui_show_screen(UiScreen::CARE);

@@ -474,13 +474,22 @@ static esp_err_t handle_rag_query(httpd_req_t* req) {
     if (deserializeJson(doc, body)) {
         return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
     }
-    const char* q = doc["query"] | "";
+    const char* q     = doc["query"] | "";
+    const char* scope = doc["scope"] | "all";
     pet_state_lock();
     const char* slug = _pet ? species_get(_pet->speciesId).slug : "";
     pet_state_unlock();
 
-    RagHit hits[3] = {};
-    uint8_t cnt = rag_is_ready() ? rag_query(q, slug, hits, 3) : 0;
+    RagHit hits[4] = {};
+    uint8_t cnt = 0;
+    if (rag_is_ready()) {
+        if (strcmp(scope, "zoo") == 0) {
+            cnt = q[0] ? rag_query_zoo(q, slug, hits, 4)
+                       : rag_list_species_chunks(slug, hits, 3);
+        } else {
+            cnt = rag_query(q, slug, hits, 3);
+        }
+    }
 
     JsonDocument out;
     out["ready"]  = rag_is_ready();

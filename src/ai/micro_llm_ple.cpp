@@ -443,9 +443,9 @@ static void generate_fallback_reply(const ZooPetState* pet, const PetMemory* mem
 
     if (rag_hit && rag_hit->score >= 2.2f) {
         if (screen_bubble) {
-            snprintf(out, out_len, "%s: %s", rag_hit->tag, rag_hit->snippet);
+            snprintf(out, out_len, "%s: %s", rag_hit->title, rag_hit->snippet);
         } else {
-            snprintf(out, out_len, "%s recalls (%s): %s", pet->petName, rag_hit->tag, rag_hit->snippet);
+            snprintf(out, out_len, "%s recalls (%s): %s", pet->petName, rag_hit->title, rag_hit->snippet);
         }
         size_t max_w = screen_bubble ? LLM_MAX_TOK_SCREEN : LLM_MAX_TOK_WEB;
         size_t max_c = screen_bubble ? 110 : 220;

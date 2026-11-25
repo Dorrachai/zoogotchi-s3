@@ -24,3 +24,7 @@ uint16_t rag_term_count();
 // Returns number of matching chunks written to out_hits (<= max_k, max 4)
 uint8_t  rag_query(const char* query, const char* species_slug,
                    RagHit* out_hits, uint8_t max_k);
+uint8_t  rag_query_zoo(const char* query, const char* species_slug,
+                       RagHit* out_hits, uint8_t max_k);
+uint8_t  rag_list_species_chunks(const char* species_slug,
+                                 RagHit* out_hits, uint8_t max_k);

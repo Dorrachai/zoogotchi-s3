@@ -257,7 +257,8 @@ def test_web_bundle():
     html = gzip.decompress(gz_path.read_bytes()).decode("utf-8")
     assert "ZooGotchi S3" in html and "/api/chat" in html and "/api/breed" in html
     assert "/api/study" in html and "/api/decks/custom" in html and "/api/health" in html
-    print(f"[PASS] Web bundle verified ({sz} bytes gzipped < 35KB, includes Study & Health APIs)")
+    assert "searchZooRag" in html
+    print(f"[PASS] Web bundle verified ({sz} bytes gzipped < 35KB, includes Study, Health & Zoo RAG APIs)")
 
 
 def test_study_decks_and_sm2():
@@ -455,16 +456,26 @@ def test_rag_index_binary():
     rag_bin = ROOT / "data" / "rag" / "kb.bin"
     assert rag_bin.is_file(), "data/rag/kb.bin missing; run tools/build_rag_index.py"
     raw = rag_bin.read_bytes()
-    assert len(raw) <= 64 * 1024, f"RAG binary too large: {len(raw)} B"
+    assert len(raw) <= 96 * 1024, f"RAG binary too large: {len(raw)} B"
     magic, ver, n_c, n_t, _dl, _r, _c, _t, _p, tot, crc = struct.unpack("<4sI4H5I", raw[:36])
     assert magic == b"ZRAG" and ver == 1 and tot == len(raw)
-    assert n_c >= 100 and n_t >= 500
+    assert n_c >= 135 and n_t >= 500
     assert (zlib.crc32(raw[36:]) & 0xFFFFFFFF) == crc
 
     sys.path.insert(0, str(ROOT / "tools"))
     import build_rag_index
 
-    build_rag_index.smoke_query_bin(rag_bin, ["manatee seagrass", "に限って", "jlpt murphy law", "sliding window"])
+    build_rag_index.smoke_query_bin(
+        rag_bin,
+        [
+            "manatee seagrass",
+            "に限って",
+            "zoo shop scholar glasses",
+            "forage catch minigame",
+            "monarch chrysalis lifecycle",
+            "sliding window",
+        ],
+    )
     print(f"[PASS] On-device ZRAG binary verified ({tot:,} B, {n_c} chunks, {n_t} terms, CRC32 0x{crc:08X})")
 
 

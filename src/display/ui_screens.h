@@ -52,6 +52,7 @@ struct UiCallbacks {
     void (*onAdjustStepGoal)(int32_t delta);
     void (*onToggleHealthReminders)();
     void (*onToggleBreathe)();
+    void (*onJournalZooGuide)();
 };
 
 void     ui_screens_init(const UiCallbacks& cbs);
@@ -71,5 +72,7 @@ void     ui_show_quiz_feedback(uint8_t picked_idx, uint8_t correct_idx, const ch
 void     ui_refresh_focus(bool active, uint16_t duration_min, uint32_t rem_sec, uint8_t pct,
                           bool demo_speed, const char* pet_name);
 void     ui_refresh_health(const ZooPetState* pet, const HealthState* hs, const BreatheSnapshot* br);
+void     ui_journal_show_rag_card(const char* btn_label, const char* body_text);
+void     ui_journal_reset_view();
 
 lv_obj_t* ui_minigame_parent();

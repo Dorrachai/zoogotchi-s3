@@ -2,30 +2,30 @@
   "zoogotchi": {
     "bm25_sparse": {
       "method": "bm25_sparse",
-      "num_queries": 36,
-      "recall_at_1": 1.0,
+      "num_queries": 42,
+      "recall_at_1": 0.9762,
       "recall_at_3": 1.0,
-      "mrr_at_5": 1.0,
-      "ndcg_at_5": 0.9619,
-      "latency_ms": 0.078
+      "mrr_at_5": 0.9881,
+      "ndcg_at_5": 0.9541,
+      "latency_ms": 0.093
     },
     "dense_svd": {
       "method": "dense_svd",
-      "num_queries": 36,
+      "num_queries": 42,
       "recall_at_1": 1.0,
       "recall_at_3": 1.0,
       "mrr_at_5": 1.0,
-      "ndcg_at_5": 0.9678,
-      "latency_ms": 0.111
+      "ndcg_at_5": 0.9731,
+      "latency_ms": 0.126
     },
     "hybrid_rrf": {
       "method": "hybrid_rrf",
-      "num_queries": 36,
+      "num_queries": 42,
       "recall_at_1": 1.0,
       "recall_at_3": 1.0,
       "mrr_at_5": 1.0,
-      "ndcg_at_5": 0.9707,
-      "latency_ms": 0.391
+      "ndcg_at_5": 0.9694,
+      "latency_ms": 0.677
     }
   }
 }

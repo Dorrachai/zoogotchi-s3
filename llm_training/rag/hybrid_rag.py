@@ -268,6 +268,12 @@ def get_eval_queries(domain: str, docs: list[dict]) -> list[tuple[str, set[str]]
         ("japanese contradiction 矛盾 compromise 妥協", {"ZOO-084", "ZOO-085"}),
         ("mx1.25 lipo polarity rechargeable ml414 rtc cell", {"ZOO-104"}),
         ("three layer safety v_out guardrails ple", {"ZOO-107"}),
+        ("monarch caterpillar chrysalis lifecycle metamorphosis", ids_with_tag_prefix("species:monarch")),
+        ("zoo shop scholar glasses grad cap coins price", ids_with_tag_prefix("zoo:shop")),
+        ("forage catch imu tilt rhythm chirp minigame", ids_with_tag_prefix("zoo:minigames")),
+        ("petting stroke lullaby cradle rock dizzy shake", ids_with_tag_prefix("zoo:interactions")),
+        ("vet medicine tonic permadeath sanctuary memorial", ids_with_tag_prefix("zoo:permadeath")),
+        ("health step goal midnight rollover water cups breathing", ids_with_tag_prefix("Health Goals")),
     ]
 
 

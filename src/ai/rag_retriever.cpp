@@ -214,8 +214,9 @@ bool     rag_is_ready()     { return _ready; }
 uint16_t rag_chunk_count()  { return _ready ? _hdr.num_chunks : 0; }
 uint16_t rag_term_count()   { return _ready ? _hdr.num_terms : 0; }
 
-uint8_t rag_query(const char* query, const char* species_slug,
-                  RagHit* out_hits, uint8_t max_k) {
+static uint8_t rag_query_filtered(const char* query, const char* species_slug,
+                                  uint8_t cat_mask, float sp_boost,
+                                  RagHit* out_hits, uint8_t max_k) {
     if (!_ready || !query || !query[0] || !out_hits || max_k == 0) return 0;
     if (max_k > 4) max_k = 4;
 
@@ -268,13 +269,22 @@ uint8_t rag_query(const char* query, const char* species_slug,
         i++;
     }
 
-    // Light +0.35 species-tag relevance boost on matched chunks
+    // Filter out unwanted categories cleanly
+    if (cat_mask != 0xFF) {
+        for (uint16_t c = 0; c < n_chunks; c++) {
+            if (((cat_mask >> chunks[c].cat) & 1U) == 0) {
+                scores[c] = 0.0f;
+            }
+        }
+    }
+
+    // Active-species tag relevance boost on matched chunks
     if (species_slug && species_slug[0]) {
         char sp_tag[40];
         snprintf(sp_tag, sizeof(sp_tag), "species:%s", species_slug);
         for (uint16_t c = 0; c < n_chunks; c++) {
             if (scores[c] > 0.0f && strncmp(chunks[c].tag, sp_tag, sizeof(chunks[c].tag)) == 0) {
-                scores[c] += 0.35f;
+                scores[c] += sp_boost;
             }
         }
     }
@@ -303,5 +313,43 @@ uint8_t rag_query(const char* query, const char* species_slug,
     }
 
     free(scores);
+    return hit_cnt;
+}
+
+uint8_t rag_query(const char* query, const char* species_slug,
+                  RagHit* out_hits, uint8_t max_k) {
+    return rag_query_filtered(query, species_slug, 0xFF, 0.35f, out_hits, max_k);
+}
+
+uint8_t rag_query_zoo(const char* query, const char* species_slug,
+                      RagHit* out_hits, uint8_t max_k) {
+    // Categories: 0=species, 3=genetics, 4=care (exclude 1=dsa, 2=jlpt)
+    static constexpr uint8_t ZOO_CAT_MASK = (1U << 0) | (1U << 3) | (1U << 4);
+    return rag_query_filtered(query, species_slug, ZOO_CAT_MASK, 0.85f, out_hits, max_k);
+}
+
+uint8_t rag_list_species_chunks(const char* species_slug,
+                                RagHit* out_hits, uint8_t max_k) {
+    if (!_ready || !species_slug || !species_slug[0] || !out_hits || max_k == 0) return 0;
+    if (max_k > 4) max_k = 4;
+
+    char sp_tag[40];
+    snprintf(sp_tag, sizeof(sp_tag), "species:%s", species_slug);
+
+    uint16_t n_chunks = _hdr.num_chunks;
+    const RagChunkRec* chunks = reinterpret_cast<const RagChunkRec*>(_zrag_buf + _hdr.chunk_off);
+    uint8_t hit_cnt = 0;
+    for (uint16_t c = 0; c < n_chunks && hit_cnt < max_k; c++) {
+        if (strncmp(chunks[c].tag, sp_tag, sizeof(chunks[c].tag)) == 0) {
+            RagHit& dst = out_hits[hit_cnt++];
+            memset(&dst, 0, sizeof(RagHit));
+            dst.chunkId  = chunks[c].id;
+            dst.category = chunks[c].cat;
+            dst.score    = 1.0f;
+            utf8_strlcpy(dst.title,   chunks[c].title,   sizeof(dst.title));
+            utf8_strlcpy(dst.tag,     chunks[c].tag,     sizeof(dst.tag));
+            utf8_strlcpy(dst.snippet, chunks[c].snippet, sizeof(dst.snippet));
+        }
+    }
     return hit_cnt;
 }

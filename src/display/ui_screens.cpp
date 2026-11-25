@@ -55,9 +55,11 @@ static lv_obj_t* _shop_btn_lbl[SHOP_ITEM_COUNT] = {};
 
 // Journal & Memorial widgets
 static lv_obj_t* _j_body       = nullptr;
+static lv_obj_t* _j_guide_lbl  = nullptr;
 static lv_obj_t* _j_breed_btn  = nullptr;
 static lv_obj_t* _j_breed_lbl  = nullptr;
 static lv_obj_t* _m_body       = nullptr;
+static bool      _j_rag_mode   = false;
 
 // Settings widgets
 static lv_obj_t* _s_wifi_lbl   = nullptr;
@@ -386,7 +388,12 @@ static void build_journal_screen() {
     lv_obj_set_style_text_font(_j_body, &lv_font_montserrat_12, 0);
     lv_label_set_text(_j_body, "Loading...");
 
-    _j_breed_btn = make_btn(_scr_journal, 20, 224, 200, 38, 0x7C3AED, 0xFFFFFF,
+    make_btn(_scr_journal, 16, 224, 98, 36, 0x0E7490, 0xFFFFFF,
+             "Zoo Guide", [](lv_event_t*) {
+        if (_cbs.onJournalZooGuide) _cbs.onJournalZooGuide();
+    }, nullptr, &_j_guide_lbl);
+
+    _j_breed_btn = make_btn(_scr_journal, 120, 224, 104, 36, 0x7C3AED, 0xFFFFFF,
                             "Cross-Breed", [](lv_event_t*) {
         if (_cbs.onBreedPlaza) _cbs.onBreedPlaza();
     }, nullptr, &_j_breed_lbl);
@@ -727,6 +734,8 @@ void ui_screens_init(const UiCallbacks& cbs) {
 
 void ui_show_screen(UiScreen scr) {
     _cur = scr;
+    _j_rag_mode = false;
+    if (_j_guide_lbl) lv_label_set_text(_j_guide_lbl, "Zoo Guide");
     switch (scr) {
     case UiScreen::ADOPT_CAT:     lv_screen_load(_scr_adopt_cat); break;
     case UiScreen::ADOPT_SPECIES: lv_screen_load(_scr_adopt_sp);  break;
@@ -824,33 +833,38 @@ void ui_update_home(const ZooPetState* pet, const AppConfig* cfg,
     }
 
     if (_cur == UiScreen::JOURNAL) {
+        if (!_j_rag_mode) {
+            if (sp.isKarimono) {
+                char code[13];
+                karimono_encode_code(pet->genome, code);
+                lv_label_set_text_fmt(_j_body,
+                    "%s (%s)\nGen %u · Parents: %s x %s\nCode: %s\n"
+                    "Play/Calm: %d  Brave: %d\nWarm: %d  Curious: %d\n"
+                    "Total Steps: %lu · %s",
+                    pet->petName, sp.name, (unsigned)pet->genome.generation,
+                    pet->genome.parentAName, pet->genome.parentBName, code,
+                    (int)pet->playfulCalm, (int)pet->braveShy,
+                    (int)pet->affectionIndep, (int)pet->curiousRoutine,
+                    (unsigned long)pet->stepsTotal, sp.funFacts[0]);
+            } else {
+                lv_label_set_text_fmt(_j_body,
+                    "%s (%s)\n%s · %s\nAge: %luh / %uh (Permadeath)\n"
+                    "Play/Calm: %d  Brave: %d\nWarm: %d  Curious: %d\n"
+                    "Steps: %lu · Memorials: %u\n%s",
+                    pet->petName, sp.scientificName,
+                    sp.biomeName, circadian_name(sp.circadian),
+                    (unsigned long)(pet->ageSeconds / 3600UL), (unsigned)sp.naturalLifespanHours,
+                    (int)pet->playfulCalm, (int)pet->braveShy,
+                    (int)pet->affectionIndep, (int)pet->curiousRoutine,
+                    (unsigned long)pet->stepsTotal, (unsigned)memorial_count(),
+                    sp.funFacts[(pet->ageSeconds / 60) % 3]);
+            }
+        }
         if (sp.isKarimono) {
-            char code[13];
-            karimono_encode_code(pet->genome, code);
-            lv_label_set_text_fmt(_j_body,
-                "%s (%s)\nGen %u · Parents: %s x %s\nCode: %s\n"
-                "Play/Calm: %d  Brave: %d\nWarm: %d  Curious: %d\n"
-                "Total Steps: %lu · %s",
-                pet->petName, sp.name, (unsigned)pet->genome.generation,
-                pet->genome.parentAName, pet->genome.parentBName, code,
-                (int)pet->playfulCalm, (int)pet->braveShy,
-                (int)pet->affectionIndep, (int)pet->curiousRoutine,
-                (unsigned long)pet->stepsTotal, sp.funFacts[0]);
             lv_label_set_text(_j_breed_lbl, zoo_karimono_can_breed(pet)
-                ? "Cross-Breed (Plaza)" : "Breed at Adult Stage");
+                ? "Cross-Breed" : "Breed (Adult)");
         } else {
-            lv_label_set_text_fmt(_j_body,
-                "%s (%s)\n%s · %s\nAge: %luh / %uh (Permadeath)\n"
-                "Play/Calm: %d  Brave: %d\nWarm: %d  Curious: %d\n"
-                "Steps: %lu · Memorials: %u\n%s",
-                pet->petName, sp.scientificName,
-                sp.biomeName, circadian_name(sp.circadian),
-                (unsigned long)(pet->ageSeconds / 3600UL), (unsigned)sp.naturalLifespanHours,
-                (int)pet->playfulCalm, (int)pet->braveShy,
-                (int)pet->affectionIndep, (int)pet->curiousRoutine,
-                (unsigned long)pet->stepsTotal, (unsigned)memorial_count(),
-                sp.funFacts[(pet->ageSeconds / 60) % 3]);
-            lv_label_set_text(_j_breed_lbl, "Adopt New Animal");
+            lv_label_set_text(_j_breed_lbl, "Adopt New");
         }
     }
     (void)cfg;
@@ -992,4 +1006,15 @@ void ui_refresh_health(const ZooPetState* pet, const HealthState* hs, const Brea
     lv_label_set_text_fmt(_hl_water_lbl, "+1 Water Cup (%u/%u)",
                           (unsigned)hs->waterCupsToday, (unsigned)hs->waterGoalCups);
     lv_label_set_text(_hl_nudge_lbl, hs->remindersEnabled ? "Nudge: ON" : "Nudge: OFF");
+}
+
+void ui_journal_show_rag_card(const char* btn_label, const char* body_text) {
+    _j_rag_mode = true;
+    if (_j_guide_lbl && btn_label) lv_label_set_text(_j_guide_lbl, btn_label);
+    if (_j_body && body_text) lv_label_set_text(_j_body, body_text);
+}
+
+void ui_journal_reset_view() {
+    _j_rag_mode = false;
+    if (_j_guide_lbl) lv_label_set_text(_j_guide_lbl, "Zoo Guide");
 }

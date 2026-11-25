@@ -3,7 +3,7 @@
 ZooGotchi S3 — On-Device Compact BM25 RAG Index Builder
 Extracts factual grounding chunks directly from firmware registries/study decks
 and builds:
-  1. data/rag/kb.bin  (LittleFS binary index < 64 KB for ESP32-S3 C++ retriever)
+  1. data/rag/kb.bin  (LittleFS binary index < 96 KB for ESP32-S3 C++ retriever)
   2. llm_training/data/kb_zoogotchi.jsonl (Host Hybrid RAG corpus & eval source)
 
 Binary format ("ZRAG" v1):
@@ -39,6 +39,7 @@ SPECIES_CAT_FILES = (
     ROOT / "src" / "zoo" / "categories" / "karimono.h",
 )
 STUDY_DECK_DIR = ROOT / "src" / "learn" / "decks"
+SHOP_CPP_PATH = ROOT / "src" / "zoo" / "economy_shop.cpp"
 OUT_BIN = ROOT / "data" / "rag" / "kb.bin"
 OUT_JSONL = ROOT / "llm_training" / "data" / "kb_zoogotchi.jsonl"
 
@@ -226,8 +227,118 @@ def static_care_and_genetics_chunks() -> list[dict]:
     ]
 
 
+def extract_zoo_extended_chunks() -> list[dict]:
+    """Append-only full-Zoo coverage: 18 lifecycles, 6 biome guides, 2 shop, 4 mechanics."""
+    src = "\n".join(p.read_text(encoding="utf-8") for p in SPECIES_CAT_FILES)
+    pat = re.compile(
+        r'\{\s*(\d+),\s*AnimalCategory::(\w+),\s*"([^"]+)",\s*"([^"]+)",\s*"([^"]+)",\s*'
+        r'"([^"]+)",\s*CircadianType::(\w+),\s*\{([^}]+)\},\s*\{([^}]+)\},\s*(\d+),\s*'
+        r'"([^"]+)",\s*"([^"]+)",\s*"([^"]+)",\s*0x[0-9A-Fa-f]+,\s*0x[0-9A-Fa-f]+,\s*0x[0-9A-Fa-f]+,\s*'
+        r'\{\s*"([^"]+)",\s*"([^"]+)",\s*"([^"]+)"\s*\},\s*(true|false)',
+        re.DOTALL,
+    )
+    chunks = []
+    by_cat: dict[str, list[tuple[str, str, str, str]]] = {}
+
+    for m in pat.finditer(src):
+        (_sid, cat_enum, slug, name, _sci, biome, circ, stages_s, hours_s, lifespan,
+         _food, _treat, _care, _fact0, _fact1, fact2, is_kari) = m.groups()
+        is_kari_b = is_kari == "true"
+        stages = re.findall(r'"([^"]+)"', stages_s)
+        hours = [h.strip() for h in hours_s.split(",") if h.strip()]
+        chunks.append({
+            "cat": CAT_GENETICS if is_kari_b else CAT_SPECIES,
+            "title": _clean_utf8(f"{name} Lifecycle", 39),
+            "tag": _clean_utf8(f"species:{slug}", 35),
+            "snippet": _clean_utf8(f"Stages: {'->'.join(stages)}. {fact2}", 159),
+            "keywords": (
+                f"{slug.replace('_', ' ')} {name} {biome} {circ} stages lifecycle evolve "
+                f"growth {' '.join(stages)} {' '.join(h + 'h' for h in hours)} {lifespan}h {fact2}"
+            ),
+        })
+        by_cat.setdefault(cat_enum, []).append((slug, name, biome, circ))
+
+    cat_twists = {
+        "LAND": "Warm terrestrial habitats; authentic circadian rhythms and real-animal permadeath.",
+        "SKY": "Flight-stage progression from Egg/Fledgling to Elder with species-specific chirps.",
+        "INSECT": "True metamorphosis stages (Larva/Grub/Nymph -> Pupa/Chrysalis -> Adult) & mist care.",
+        "WATER": "Aquatic habitats (Spring Lagoon, Cool Lake, Kelp Reef) balancing water temp & salinity.",
+        "REPTILE": "Ectotherm basking warmth, long lifespans, and mood-reactive chameleon color shifting.",
+        "KARIMONO": "Cross-breedable shrine spirits passing 12-char Base32 genomes & rare mutations.",
+    }
+    for cat_enum, rows in by_cat.items():
+        names = ", ".join(r[1] for r in rows)
+        biomes = ", ".join(r[2] for r in rows)
+        slugs = " ".join(r[0].replace("_", " ") for r in rows)
+        twist = cat_twists.get(cat_enum, "")
+        cat_label = cat_enum.title()
+        chunks.append({
+            "cat": CAT_GENETICS if cat_enum == "KARIMONO" else CAT_SPECIES,
+            "title": _clean_utf8(f"{cat_label} Biome Guide", 39),
+            "tag": _clean_utf8(f"biome:{cat_enum.lower()}", 35),
+            "snippet": _clean_utf8(f"{cat_label}: {names}. {twist}", 159),
+            "keywords": f"biome category {cat_enum.lower()} {names} {biomes} {slugs} {twist}",
+        })
+
+    # Parse Zoo Shop items directly from economy_shop.cpp
+    shop_src = SHOP_CPP_PATH.read_text(encoding="utf-8")
+    shop_pat = re.compile(r'\{ShopItemId::\w+,\s*"([^"]+)",\s*"([^"]+)",\s*(\d+),\s*(true|false)\}')
+    cons_items, acc_items = [], []
+    for s_name, s_desc, s_price, is_acc in shop_pat.findall(shop_src):
+        entry = f"{s_name} {s_price}c ({s_desc})"
+        short = f"{s_name} {s_price}c"
+        if is_acc == "true":
+            acc_items.append((short, f"{s_name} {s_desc} {s_price} coins accessory hat glasses"))
+        else:
+            cons_items.append((entry, f"{s_name} {s_desc} {s_price} coins consumable shop"))
+
+    chunks.append({
+        "cat": CAT_CARE,
+        "title": _clean_utf8("Zoo Shop Consumables", 39),
+        "tag": "zoo:shop",
+        "snippet": _clean_utf8("Consumables: " + ", ".join(x[0] for x in cons_items), 159),
+        "keywords": "zoo shop coins buy consumables " + " ".join(x[1] for x in cons_items),
+    })
+    chunks.append({
+        "cat": CAT_CARE,
+        "title": _clean_utf8("Zoo Shop Accessories", 39),
+        "tag": "zoo:shop",
+        "snippet": _clean_utf8("Wearables: " + ", ".join(x[0] for x in acc_items), 159),
+        "keywords": "zoo shop coins equip accessories wearable " + " ".join(x[1] for x in acc_items),
+    })
+
+    mechanics = [
+        (CAT_CARE, "Zoo Mini-Games Guide", "zoo:minigames",
+         "Play Forage Catch (IMU tilt), Habitat Care (tap), and Rhythm Chirp (buzzer sound) to earn Zoo Coins, enrichment & bravery.",
+         "minigame minigames play forage catch imu tilt habitat care tap rhythm chirp buzzer coins bravery"),
+        (CAT_CARE, "Petting, Lullaby & Shakes", "zoo:interactions",
+         "Stroke sprite on LCD to boost bond & purrs; rock gently side-to-side for lullaby soothe; hard shakes cause brief dizziness.",
+         "pet stroke affection bond purr lullaby cradle rock shake dizzy imu motion touch"),
+        (CAT_CARE, "Vitals, Sickness & Memorial", "zoo:permadeath",
+         "Monitor 7 vitals cleanly; Vet Medicine or Vet Tonic cures sickness; real animals age naturally & leave /memorial.json tributes.",
+         "vitals hunger hydration health sickness medicine vet clinic cure permadeath memorial sanctuary"),
+        (CAT_CARE, "Personality & Trait Axes", "zoo:traits",
+         "Care, mini-games, breathing & study shape 4 evolving axes: Playful/Calm, Brave/Shy, Warm/Indep, and Curious/Routine.",
+         "personality traits axes playful calm brave shy affectionate independent curious routine evolve"),
+    ]
+    for cat, title, tag, snip, kw in mechanics:
+        chunks.append({
+            "cat": cat,
+            "title": _clean_utf8(title, 39),
+            "tag": _clean_utf8(tag, 35),
+            "snippet": _clean_utf8(snip, 159),
+            "keywords": kw,
+        })
+    return chunks
+
+
 def build_index():
-    chunks = extract_species_chunks() + extract_study_chunks() + static_care_and_genetics_chunks()
+    chunks = (
+        extract_species_chunks()
+        + extract_study_chunks()
+        + static_care_and_genetics_chunks()
+        + extract_zoo_extended_chunks()
+    )
     n_chunks = len(chunks)
 
     # Deduplicate/assign IDs and index BM25 tokens
@@ -295,7 +406,7 @@ def build_index():
     post_off = term_off + len(term_bytes)
     payload = bytes(chunk_bytes) + bytes(term_bytes) + bytes(post_bytes)
     total_bytes = 36 + len(payload)
-    assert total_bytes <= 64 * 1024, f"ZRAG exceeded 64KB budget: {total_bytes}"
+    assert total_bytes <= 96 * 1024, f"ZRAG exceeded 96KB budget: {total_bytes}"
     crc = zlib.crc32(payload) & 0xFFFFFFFF
 
     hdr = struct.pack(
@@ -323,11 +434,21 @@ def build_index():
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
     print(
-        f"Built {OUT_BIN} ({total_bytes:,} bytes < 64 KB) | "
+        f"Built {OUT_BIN} ({total_bytes:,} bytes < 96 KB) | "
         f"chunks={n_chunks}, terms={len(sorted_hashes)}, avg_dl={avg_dl:.2f}, crc32=0x{crc:08X}"
     )
     print(f"Exported {OUT_JSONL} ({len(jsonl_rows)} docs)")
-    smoke_query_bin(OUT_BIN, ["manatee seagrass", "に限って", "jlpt murphy law", "sliding window"])
+    smoke_query_bin(
+        OUT_BIN,
+        [
+            "manatee seagrass",
+            "に限って",
+            "zoo shop scholar glasses",
+            "forage catch minigame",
+            "monarch chrysalis lifecycle",
+            "sliding window",
+        ],
+    )
 
 
 def smoke_query_bin(bin_path: Path, queries: list[str]):

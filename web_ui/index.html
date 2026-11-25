@@ -144,6 +144,22 @@ nav button.on{color:var(--accent);background:var(--soft)}
       <div class="grid2" id="vitalsGrid"></div>
     </div>
     <div class="card">
+      <strong>Zoo Field Guide (On-Device RAG)</strong>
+      <div class="chips" style="margin-top:6px">
+        <span class="chip" onclick="searchZooRag('')">My Pet</span>
+        <span class="chip" onclick="searchZooRag('lifecycle stages')">Lifecycle</span>
+        <span class="chip" onclick="searchZooRag('biome guide')">Biome</span>
+        <span class="chip" onclick="searchZooRag('zoo shop')">Zoo Shop</span>
+        <span class="chip" onclick="searchZooRag('minigame')">Mini-Games</span>
+        <span class="chip" onclick="searchZooRag('karimono')">Karimono</span>
+      </div>
+      <div class="row" style="flex-wrap:nowrap">
+        <input id="zooRagIn" maxlength="80" placeholder="Ask Zoo RAG: manatee, shop, lifecycle, lullaby..." onkeydown="if(event.key==='Enter')searchZooRag()">
+        <button onclick="searchZooRag()">Search</button>
+      </div>
+      <div id="zooRagRes" class="small" style="margin-top:8px"></div>
+    </div>
+    <div class="card">
       <strong>Personality & Steps</strong>
       <p class="small" id="traitSummary" style="margin:6px 0"></p>
     </div>
@@ -205,7 +221,7 @@ function tab(i,el){
   document.querySelectorAll('nav button').forEach(b=>b.classList.remove('on'));
   el.classList.add('on');
   if(i===1)loadStudy();
-  if(i===2){loadHealth();loadDiaryAndMem();}
+  if(i===2){loadHealth();searchZooRag('');loadDiaryAndMem();}
   if(i===3)loadLineage();
 }
 function addBubble(cls,txt){
@@ -321,14 +337,10 @@ async function loadStudy(){
   $('studyMeta').textContent=`Mastered: ${s.mastered} · Due Now: ${s.totalDue} · Focus: ${s.focusMin}m`+(s.lastLearned?` · Pet learned: "${s.lastLearned}"`:'');
   $('deckGrid').innerHTML=(s.decks||[]).map(d=>`<div class="stat"><label><span>${d.name}</span><b>${d.due}/${d.total}</b></label></div>`).join('');
 }
-async function searchRag(){
-  const q=$('ragIn').value.trim(), out=$('ragRes');
-  if(!q){out.textContent='Enter a search query.';return;}
-  out.textContent='Searching on-device BM25 index...';
-  const r=await(await fetch('/api/rag',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q})})).json();
-  out.textContent='';
+function renderRagHits(outEl,r){
+  outEl.textContent='';
   const hits=r.hits||[];
-  if(!hits.length){out.textContent=`No hits across ${r.chunks||0} indexed chunks.`;return;}
+  if(!hits.length){outEl.textContent=`No hits across ${r.chunks||0} indexed chunks.`;return;}
   hits.forEach(h=>{
     const card=document.createElement('div');
     card.className='stat'; card.style.marginBottom='6px';
@@ -336,8 +348,24 @@ async function searchRag(){
     b.textContent=`${h.title} (${Number(h.score).toFixed(2)})`;
     const p=document.createElement('div');
     p.textContent=h.snippet;
-    card.appendChild(b); card.appendChild(p); out.appendChild(card);
+    card.appendChild(b); card.appendChild(p); outEl.appendChild(card);
   });
+}
+async function searchRag(){
+  const q=$('ragIn').value.trim(), out=$('ragRes');
+  if(!q){out.textContent='Enter a search query.';return;}
+  out.textContent='Searching on-device BM25 index...';
+  const r=await(await fetch('/api/rag',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q})})).json();
+  renderRagHits(out,r);
+}
+async function searchZooRag(preset){
+  const q=preset!==undefined?preset:$('zooRagIn').value.trim();
+  if(preset!==undefined&&$('zooRagIn'))$('zooRagIn').value=preset;
+  const out=$('zooRagRes');
+  if(!out)return;
+  out.textContent='Loading Zoo RAG guide...';
+  const r=await(await fetch('/api/rag',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q,scope:'zoo'})})).json();
+  renderRagHits(out,r);
 }
 async function refreshState(){
   try{
