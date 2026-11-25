@@ -114,9 +114,9 @@ Adopt one of **18 companions across 6 biomes**. Real animals follow authentic da
 <details>
 <summary><b>Under the Hood: On-Device RAG, INT4 Micro-LLM & Asset Generators</b></summary>
 
-- **On-Device & Hybrid RAG:** Binary BM25 index [`data/rag/kb.bin`](data/rag/kb.bin) (`53,304 B`, `109` chunks across species, DSA, JLPT N4–N1 Japanese+English, health goals, genetics, and hardware) queried on-chip via `/api/rag`; benchmarked host-side against **BM25 Sparse vs. Dense SVD vs. Hybrid RRF** (`llm_training/rag/hybrid_rag.py`: `R@1 = 1.000`, `nDCG@5 = 0.971`).
+- **On-Device & Hybrid RAG:** Binary BM25 index [`data/rag/kb.bin`](data/rag/kb.bin) (`99,308 B`, `199` chunks covering species care, lifecycles, biomes, Zoo Shop, mini-games, **real-world Wikipedia + GBIF zoology**, DSA, JLPT N4–N1 Japanese+English, health goals, genetics, and hardware) queried on-chip via `/api/rag`; benchmarked host-side against **BM25 Sparse vs. Dense SVD vs. Hybrid RRF** (`llm_training/rag/hybrid_rag.py`: `R@1 = 1.000`, `nDCG@5 = 0.967`).
 - **On-Chip Micro-LLM Post-Training:** Zero-leakage curated dataset -> `Base SFT` -> `LoRA SFT` -> `GRPO` vs. `SAPO` alignment -> `3.54 MB` INT4 `ZPLE` weights flashed to `0x610000` (`zoo_pet.bin`, `0.9992` C++ parity) backed by an audited 1,421-word safe output vocabulary (`include/zoo_vocab_out.h`).
-- **Asset & Font Generators (Gemini API & Local):**
+- **Asset & Font Generators (Gemini API, Wikipedia/GBIF & Local):**
   ```powershell
   # Top up missing 64x64 pixel sprites (requires GEMINI_API_KEY)
   .\.venv\Scripts\python.exe tools\generate_zoo_sprites.py --missing-only --pack
@@ -124,7 +124,8 @@ Adopt one of **18 companions across 6 biomes**. Real animals follow authentic da
   # Generate custom study deck (e.g. JLPT with kanji+furigana or NeetCode)
   .\.venv\Scripts\python.exe tools\generate_study_deck.py --topic "JLPT N2" --count 15
 
-  # Rebuild ZRAG binary index, JP bitmap font, or run GPU post-training suite
+  # Refresh real-world Wikipedia/GBIF zoology corpus, rebuild ZRAG index, or compile JP font
+  .\.venv\Scripts\python.exe tools\fetch_real_zoo_corpus.py
   .\.venv\Scripts\python.exe tools\build_rag_index.py
   .\.venv\Scripts\python.exe tools\build_jp_font.py
   .\.venv\Scripts\python.exe llm_training\post_training\run_post_training_suite.py

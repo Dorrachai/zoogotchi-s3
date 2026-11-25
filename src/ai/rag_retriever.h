@@ -21,7 +21,7 @@ bool     rag_is_ready();
 uint16_t rag_chunk_count();
 uint16_t rag_term_count();
 
-// Returns number of matching chunks written to out_hits (<= max_k, max 4)
+// Returns number of matching chunks written to out_hits (<= max_k, max 8)
 uint8_t  rag_query(const char* query, const char* species_slug,
                    RagHit* out_hits, uint8_t max_k);
 uint8_t  rag_query_zoo(const char* query, const char* species_slug,

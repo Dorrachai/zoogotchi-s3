@@ -2,8 +2,8 @@
 """
 ZooGotchi S3 — On-Device Compact BM25 RAG Index Builder
 Extracts factual grounding chunks directly from firmware registries/study decks
-and builds:
-  1. data/rag/kb.bin  (LittleFS binary index < 96 KB for ESP32-S3 C++ retriever)
+plus the offline real-world zoology corpus (Wikipedia/GBIF) and builds:
+  1. data/rag/kb.bin  (LittleFS binary index < 160 KB for ESP32-S3 C++ retriever)
   2. llm_training/data/kb_zoogotchi.jsonl (Host Hybrid RAG corpus & eval source)
 
 Binary format ("ZRAG" v1):
@@ -40,6 +40,7 @@ SPECIES_CAT_FILES = (
 )
 STUDY_DECK_DIR = ROOT / "src" / "learn" / "decks"
 SHOP_CPP_PATH = ROOT / "src" / "zoo" / "economy_shop.cpp"
+REAL_ZOO_CORPUS_PATH = ROOT / "llm_training" / "data" / "real_zoo_corpus.jsonl"
 OUT_BIN = ROOT / "data" / "rag" / "kb.bin"
 OUT_JSONL = ROOT / "llm_training" / "data" / "kb_zoogotchi.jsonl"
 
@@ -332,12 +333,36 @@ def extract_zoo_extended_chunks() -> list[dict]:
     return chunks
 
 
+def extract_real_zoo_corpus_chunks() -> list[dict]:
+    """Read checked-in Wikipedia/GBIF real zoology corpus offline (append-only after ZOO-138)."""
+    assert REAL_ZOO_CORPUS_PATH.is_file(), (
+        f"Missing {REAL_ZOO_CORPUS_PATH}; run tools/fetch_real_zoo_corpus.py first"
+    )
+    rows = [
+        json.loads(ln)
+        for ln in REAL_ZOO_CORPUS_PATH.read_text(encoding="utf-8").splitlines()
+        if ln.strip()
+    ]
+    assert len(rows) == 60, f"Expected 60 real zoology rows, found {len(rows)}"
+    return [
+        {
+            "cat": CAT_SPECIES,
+            "title": _clean_utf8(r["title"], 39),
+            "tag": _clean_utf8(r["tag"], 35),
+            "snippet": _clean_utf8(r["snippet"], 159),
+            "keywords": r.get("keywords", ""),
+        }
+        for r in rows
+    ]
+
+
 def build_index():
     chunks = (
         extract_species_chunks()
         + extract_study_chunks()
         + static_care_and_genetics_chunks()
         + extract_zoo_extended_chunks()
+        + extract_real_zoo_corpus_chunks()
     )
     n_chunks = len(chunks)
 
@@ -406,7 +431,7 @@ def build_index():
     post_off = term_off + len(term_bytes)
     payload = bytes(chunk_bytes) + bytes(term_bytes) + bytes(post_bytes)
     total_bytes = 36 + len(payload)
-    assert total_bytes <= 96 * 1024, f"ZRAG exceeded 96KB budget: {total_bytes}"
+    assert total_bytes <= 160 * 1024, f"ZRAG exceeded 160KB budget: {total_bytes}"
     crc = zlib.crc32(payload) & 0xFFFFFFFF
 
     hdr = struct.pack(
@@ -434,7 +459,7 @@ def build_index():
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
     print(
-        f"Built {OUT_BIN} ({total_bytes:,} bytes < 96 KB) | "
+        f"Built {OUT_BIN} ({total_bytes:,} bytes < 160 KB) | "
         f"chunks={n_chunks}, terms={len(sorted_hashes)}, avg_dl={avg_dl:.2f}, crc32=0x{crc:08X}"
     )
     print(f"Exported {OUT_JSONL} ({len(jsonl_rows)} docs)")
@@ -447,6 +472,9 @@ def build_index():
             "forage catch minigame",
             "monarch chrysalis lifecycle",
             "sliding window",
+            "ailurus fulgens ailuridae taxonomy",
+            "ambystoma mexicanum xochimilco",
+            "trichechus manatus iucn vulnerable",
         ],
     )
 

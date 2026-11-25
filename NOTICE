@@ -14,3 +14,9 @@ All real-zoo species, Karimono lineage/genetics mechanics, touch/IMU/sleep
 controllers, on-chip Per-Layer Embedding (PLE) micro-LLM runtime & safety
 guardrails, and the local Web/Phone PWA are original works or adaptations
 under the Apache License, Version 2.0.
+
+Real-world zoology facts and scientific taxonomy stored in
+llm_training/data/real_zoo_corpus.jsonl and compiled into data/rag/kb.bin
+include extracts adapted from English Wikipedia articles
+(https://en.wikipedia.org/, licensed under CC BY-SA 4.0) and taxonomic metadata
+from the GBIF Backbone Taxonomy (https://www.gbif.org/, licensed under CC0 1.0).

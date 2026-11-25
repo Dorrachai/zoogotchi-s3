@@ -450,16 +450,61 @@ def test_zple_trainer_and_binary():
         print("[PASS] ZPLE trainer alignment verified (zoo_pet.bin optional in git/CI)")
 
 
+def test_real_zoo_corpus():
+    corpus_path = ROOT / "llm_training" / "data" / "real_zoo_corpus.jsonl"
+    assert corpus_path.is_file(), f"Missing real zoology corpus: {corpus_path}"
+    rows = [
+        json.loads(ln)
+        for ln in corpus_path.read_text(encoding="utf-8").splitlines()
+        if ln.strip()
+    ]
+    assert len(rows) == 60, f"Expected 60 real zoology rows, found {len(rows)}"
+
+    cat_dir = ROOT / "src" / "zoo" / "categories"
+    real_slugs: list[str] = []
+    pat = re.compile(r'\{\s*\d+,\s*AnimalCategory::\w+,\s*"([^"]+)"')
+    for fname in ("land.h", "sky.h", "insect.h", "water.h", "reptile.h"):
+        real_slugs.extend(pat.findall((cat_dir / fname).read_text(encoding="utf-8")))
+    assert len(real_slugs) == 15
+
+    cpp = (ROOT / "src" / "ai" / "safety_guardrails.cpp").read_text(encoding="utf-8")
+    bad_words = [w.lower() for w in re.findall(r'"([^"]+)"', cpp.split("UNSAFE_KEYWORDS")[1].split("};")[0])]
+    bad_tm = ("tamagrotchi", "grafana", "grot")
+
+    topics_by_slug: dict[str, set[str]] = {}
+    for r in rows:
+        slug = r["species_slug"]
+        topics_by_slug.setdefault(slug, set()).add(r["topic"])
+        assert r["tag"] == f"species:{slug}"
+        assert r["source_url"].startswith("https://en.wikipedia.org/"), f"Bad URL: {r['source_url']}"
+        assert int(r["gbif_usage_key"]) > 0, f"Bad GBIF key for {slug}"
+        snip = r["snippet"]
+        assert 28 <= len(snip.encode("utf-8")) <= 159, f"Snippet byte length invalid: {snip!r}"
+        assert all(0x20 <= ord(ch) <= 0x7E for ch in r["title"] + snip), f"Non-ASCII LCD glyph in {slug}"
+        low = f"{r['title']} {snip} {r.get('keywords', '')}".lower()
+        for bw in bad_words:
+            assert bw not in low, f"Unsafe token {bw!r} in real_zoo_corpus {slug}"
+        for tm in bad_tm:
+            assert tm not in low, f"Trademark token {tm!r} in real_zoo_corpus {slug}"
+
+    assert set(topics_by_slug.keys()) == set(real_slugs), "Corpus species mismatch"
+    for slug in real_slugs:
+        assert topics_by_slug[slug] == {"taxonomy", "habitat", "diet", "conservation"}, (
+            f"Incomplete topics for {slug}: {topics_by_slug[slug]}"
+        )
+    print("[PASS] Real-world Wikipedia/GBIF zoology corpus verified (60 cards = 15 real species x 4 topics)")
+
+
 def test_rag_index_binary():
     import zlib
 
     rag_bin = ROOT / "data" / "rag" / "kb.bin"
     assert rag_bin.is_file(), "data/rag/kb.bin missing; run tools/build_rag_index.py"
     raw = rag_bin.read_bytes()
-    assert len(raw) <= 96 * 1024, f"RAG binary too large: {len(raw)} B"
+    assert len(raw) <= 160 * 1024, f"RAG binary too large: {len(raw)} B"
     magic, ver, n_c, n_t, _dl, _r, _c, _t, _p, tot, crc = struct.unpack("<4sI4H5I", raw[:36])
     assert magic == b"ZRAG" and ver == 1 and tot == len(raw)
-    assert n_c >= 135 and n_t >= 500
+    assert n_c >= 195 and n_t >= 1800
     assert (zlib.crc32(raw[36:]) & 0xFFFFFFFF) == crc
 
     sys.path.insert(0, str(ROOT / "tools"))
@@ -474,6 +519,9 @@ def test_rag_index_binary():
             "forage catch minigame",
             "monarch chrysalis lifecycle",
             "sliding window",
+            "ailurus fulgens ailuridae taxonomy",
+            "ambystoma mexicanum xochimilco",
+            "trichechus manatus iucn vulnerable",
         ],
     )
     print(f"[PASS] On-device ZRAG binary verified ({tot:,} B, {n_c} chunks, {n_t} terms, CRC32 0x{crc:08X})")
@@ -609,6 +657,7 @@ def main():
     test_sprite_packer()
     test_packed_sprites()
     test_zple_trainer_and_binary()
+    test_real_zoo_corpus()
     test_rag_index_binary()
     test_post_training_and_curation_invariants()
     test_hardware_safety_invariants()

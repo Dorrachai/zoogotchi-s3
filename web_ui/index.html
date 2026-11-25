@@ -147,14 +147,17 @@ nav button.on{color:var(--accent);background:var(--soft)}
       <strong>Zoo Field Guide (On-Device RAG)</strong>
       <div class="chips" style="margin-top:6px">
         <span class="chip" onclick="searchZooRag('')">My Pet</span>
+        <span class="chip" onclick="searchZooRag('taxonomy classification')">Taxonomy</span>
+        <span class="chip" onclick="searchZooRag('wild habitat range')">Wild Habitat</span>
+        <span class="chip" onclick="searchZooRag('wild diet foraging')">Wild Diet</span>
+        <span class="chip" onclick="searchZooRag('iucn conservation status')">Conservation</span>
         <span class="chip" onclick="searchZooRag('lifecycle stages')">Lifecycle</span>
-        <span class="chip" onclick="searchZooRag('biome guide')">Biome</span>
         <span class="chip" onclick="searchZooRag('zoo shop')">Zoo Shop</span>
         <span class="chip" onclick="searchZooRag('minigame')">Mini-Games</span>
         <span class="chip" onclick="searchZooRag('karimono')">Karimono</span>
       </div>
       <div class="row" style="flex-wrap:nowrap">
-        <input id="zooRagIn" maxlength="80" placeholder="Ask Zoo RAG: manatee, shop, lifecycle, lullaby..." onkeydown="if(event.key==='Enter')searchZooRag()">
+        <input id="zooRagIn" maxlength="80" placeholder="Ask Zoo RAG: wild habitat, diet, conservation, shop..." onkeydown="if(event.key==='Enter')searchZooRag()">
         <button onclick="searchZooRag()">Search</button>
       </div>
       <div id="zooRagRes" class="small" style="margin-top:8px"></div>

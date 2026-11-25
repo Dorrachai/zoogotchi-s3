@@ -274,6 +274,14 @@ def get_eval_queries(domain: str, docs: list[dict]) -> list[tuple[str, set[str]]
         ("petting stroke lullaby cradle rock dizzy shake", ids_with_tag_prefix("zoo:interactions")),
         ("vet medicine tonic permadeath sanctuary memorial", ids_with_tag_prefix("zoo:permadeath")),
         ("health step goal midnight rollover water cups breathing", ids_with_tag_prefix("Health Goals")),
+        ("ailurus fulgens ailuridae carnivora eastern himalayas", ids_with_tag_prefix("species:red_panda")),
+        ("trichechus manatus sirenia vulnerable iucn caribbean", ids_with_tag_prefix("species:manatee")),
+        ("ambystoma mexicanum lake xochimilco mole salamander", ids_with_tag_prefix("species:axolotl")),
+        ("danaus plexippus milkweed larvae nectar pollinators", ids_with_tag_prefix("species:monarch")),
+        ("dynastes hercules rhinoceros beetle tree sap fruit", ids_with_tag_prefix("species:hercules_beetle")),
+        ("enteroctopus dofleini shrimp crabs clams north pacific", ids_with_tag_prefix("species:octopus")),
+        ("chelonoidis niger galapagos islands tortoise cacti herbivore", ids_with_tag_prefix("species:tortoise")),
+        ("tyto alba strigiformes tytonidae barn owl rodent", ids_with_tag_prefix("species:barn_owl")),
     ]
 
 

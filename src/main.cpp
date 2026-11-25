@@ -207,11 +207,12 @@ static void cb_ask_pet_talk() {
     } else if (g_pet.envCare < 45) {
         snprintf(q, sizeof(q), "%s %s care biome", sp.slug, sp.envCareLabel);
     } else {
-        uint8_t slot = g_talk_turn++ & 0x03;
+        uint8_t slot = (uint8_t)(g_talk_turn++ % 5);
         if (slot == 0)      strlcpy(q, "How are you feeling?", sizeof(q));
         else if (slot == 1) snprintf(q, sizeof(q), "%s biology fun facts", sp.slug);
         else if (slot == 2) snprintf(q, sizeof(q), "%s lifecycle stages evolve", sp.slug);
-        else                snprintf(q, sizeof(q), "%s %s care", sp.slug, sp.biomeName);
+        else if (slot == 3) snprintf(q, sizeof(q), "%s %s care", sp.slug, sp.biomeName);
+        else                snprintf(q, sizeof(q), "%s wild habitat diet taxonomy conservation", sp.slug);
     }
     pet_state_unlock();
     buzzer_play_category_emote((uint8_t)cat);
@@ -242,8 +243,9 @@ static void cb_journal_zoo_guide() {
     }
     pet_state_unlock();
 
-    RagHit sp_hits[3] = {};
-    uint8_t sp_cnt = rag_list_species_chunks(sp.slug, sp_hits, 3);
+    static RagHit sp_hits[7];
+    memset(sp_hits, 0, sizeof(sp_hits));
+    uint8_t sp_cnt = rag_list_species_chunks(sp.slug, sp_hits, 7);
     RagHit ctx_hit = {};
     bool has_ctx = (rag_query_zoo(ctx_q, sp.slug, &ctx_hit, 1) > 0);
     uint8_t total = (uint8_t)(sp_cnt + (has_ctx ? 1 : 0));

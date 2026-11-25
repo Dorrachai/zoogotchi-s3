@@ -480,12 +480,15 @@ static esp_err_t handle_rag_query(httpd_req_t* req) {
     const char* slug = _pet ? species_get(_pet->speciesId).slug : "";
     pet_state_unlock();
 
-    RagHit hits[4] = {};
+    RagHit* hits = (RagHit*)calloc(7, sizeof(RagHit));
+    if (!hits) {
+        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "OOM");
+    }
     uint8_t cnt = 0;
     if (rag_is_ready()) {
         if (strcmp(scope, "zoo") == 0) {
-            cnt = q[0] ? rag_query_zoo(q, slug, hits, 4)
-                       : rag_list_species_chunks(slug, hits, 3);
+            cnt = q[0] ? rag_query_zoo(q, slug, hits, 5)
+                       : rag_list_species_chunks(slug, hits, 7);
         } else {
             cnt = rag_query(q, slug, hits, 3);
         }
@@ -504,6 +507,7 @@ static esp_err_t handle_rag_query(httpd_req_t* req) {
         o["snippet"]  = hits[i].snippet;
         o["score"]    = hits[i].score;
     }
+    free(hits);
     String s;
     serializeJson(out, s);
     httpd_resp_set_type(req, "application/json");

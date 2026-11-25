@@ -218,7 +218,7 @@ static uint8_t rag_query_filtered(const char* query, const char* species_slug,
                                   uint8_t cat_mask, float sp_boost,
                                   RagHit* out_hits, uint8_t max_k) {
     if (!_ready || !query || !query[0] || !out_hits || max_k == 0) return 0;
-    if (max_k > 4) max_k = 4;
+    if (max_k > 8) max_k = 8;
 
     uint16_t n_chunks = _hdr.num_chunks;
     float* scores = (float*)calloc(n_chunks, sizeof(float));
@@ -331,7 +331,7 @@ uint8_t rag_query_zoo(const char* query, const char* species_slug,
 uint8_t rag_list_species_chunks(const char* species_slug,
                                 RagHit* out_hits, uint8_t max_k) {
     if (!_ready || !species_slug || !species_slug[0] || !out_hits || max_k == 0) return 0;
-    if (max_k > 4) max_k = 4;
+    if (max_k > 8) max_k = 8;
 
     char sp_tag[40];
     snprintf(sp_tag, sizeof(sp_tag), "species:%s", species_slug);
